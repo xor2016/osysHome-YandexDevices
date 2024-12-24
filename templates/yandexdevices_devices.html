@@ -1,0 +1,38 @@
+{% extends "yandexdevices_main.html" %}
+
+{% block tab %}
+<div class="table-responsive">
+    <table class="table table-hover table-striped">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>IOT id</th>
+                <th>Updated</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for device in devices %}
+            <tr>
+                <td class="py-1">
+                    <img src="{{ device.icon }}" height="30px" onError="this.src='/YandexDevices/static/YandexDevices.png'">
+                    <a href="?op=edit&device={{device.id}}">{{ device.title }}</a>
+                </td>
+                <td class="py-1">{{ device.device_type }}</td>
+                <td class="py-1">{{ device.iot_id }}</td>
+                <td class="py-1" id="dev{{device.id}}_updated">
+                    {{device.updated}}
+                </td>
+                <td  class="py-1" width="1%" nowrap>
+                    <div>
+                        <a href="?op=edit&device={{device.id}}" class="btn btn-success" title="Edit"><i class="feather icon-edit"></i></a>
+                        <a href="?op=delete&device={{device.id}}" onClick="return confirm('Are you sure? Please confirm.')" class="btn btn-danger" title="Delete"><i class="feather icon-trash"></i></a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

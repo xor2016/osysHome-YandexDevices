@@ -1,0 +1,65 @@
+{% extends "layouts/module_admin.html" %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="YandexDevices">YandexDevices</a></li>
+<li class="breadcrumb-item">{{form.title.data}}</li>
+{% endblock %}
+{% block module %}
+{% if form.errors %}
+<div class="alert alert-warning mt-3">
+    <ul>
+    {% for field, errors in form.errors.items() %}
+        {% for error in errors %}
+            <li>{{field}}: {{ error }}</li>
+        {% endfor %}
+    {% endfor %}
+    </ul>
+</div>
+{% endif %}
+<form  method="POST">
+    <!-- Поля формы -->
+    {{ form.hidden_tag() }}
+    <div class="mb-3">
+        {{ form.title.label(class="form-label") }}
+        {{ form.title(class="form-control") }}
+    </div>
+    <div class="mb-3">
+        {{ form.platform.label(class="form-label") }}
+        {{ form.platform(class="form-control") }}
+    </div>
+    <div class="mb-3">
+        {{ form.iot_id.label(class="form-label") }}
+        {{ form.iot_id(class="form-control") }}
+    </div>
+    <div class="mb-3">
+        {{ form.ip.label(class="form-label") }}
+        {{ form.ip(class="form-control") }}
+    </div>
+    <div class="mb-3">
+        {% if form.device_token.data%}
+            {{ form.device_token.label(class="form-label") }}
+            {{ form.device_token(class="form-control readonly") }}
+	    {%else%}
+			<p>
+				Необходимо сформировать токен доступа для локального управления колонкой!<br>
+				<a href="?op=generate_dev_token&id={{id}}" class="btn btn-primary ">Сформировать токен</a>		
+			</p>
+		{%endif%}
+    </div>
+    <div>
+        {{ form.tts.label(class="form-label me-3") }}
+        {% for choice in form.tts %}
+        <div class="form-check form-check-inline">
+            {{ choice(class="form-check-input") }}
+            <label class="form-check-label" for="{{ choice.id }}">{{ choice.label }}</label>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="mb-3">
+        {{ form.min_level.label(class="form-label") }}
+        {{ form.min_level(class="form-control") }}
+    </div>
+
+    <button type="submit" class="btn btn-primary">Submit</button>
+    <a href="YandexDevices" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

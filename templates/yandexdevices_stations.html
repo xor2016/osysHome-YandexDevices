@@ -1,0 +1,46 @@
+{% extends "yandexdevices_main.html" %}
+
+{% block tab %}
+<div class="table-responsive">
+    <table class="table table-hover table-striped">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Min level say</th>
+                <th>Online</th>
+                <th>Updated</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for station in stations %}
+            <tr>
+                <td class="py-1">
+                    <img src="{{ station.icon }}" height="50px" onError="this.src='/YandexDevices/static/YandexDevices.png'">
+                    <a href="?op=edit&station={{station.id}}">{{ station.title }}</a>
+                </td>
+                <td>
+                    {{station.min_level}}
+                </td>
+                <td class="py-1">
+                    {%if station.online%}
+                    <span class="badge bg-success">Online</span>
+                    {%else%}
+                    <span class="badge bg-danger">Offline</span>
+                    {%endif%}
+                </td>
+                <td class="py-1" id="dev{{station.id}}_updated">
+                    {{station.updated}}
+                </td>
+                <td  class="py-1" width="1%" nowrap>
+                    <div>
+                        <a href="?op=edit&station={{station.id}}" class="btn btn-success" title="Edit"><i class="feather icon-edit"></i></a>
+                        <a href="?op=delete&station={{station.id}}" onClick="return confirm('Are you sure? Please confirm.')" class="btn btn-danger" title="Delete"><i class="feather icon-trash"></i></a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "layouts/module_admin.html" %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="YandexDevices">Yandex Devices</a></li>
+{% endblock %}
+{% block module %}
+<h4>Autorization</h4>
+{% if AUTHORIZED is not none %} 
+State: 
+{%if AUTHORIZED%}
+<span class="badge bg-success">Authorized</span>
+{%else%}
+<span class="badge bg-danger">Not authorized</span>
+{%endif%}
+<a href="?op=auth&type=reset" class="btn btn-primary btn-sm">
+    Reset
+</a>
+<hr>
+<a href="?op=auth&type=qr" class="btn btn-primary">
+    QR code
+</a>
+{% else %}
+QR code
+<img src="{{QR_URL}}">
+<br>
+<a href="?op=auth&type=qr&track_id={{TRACK_ID}}&csrf_token={{CSRF_TOKEN}}" class="btn btn-primary">
+    Continue
+</a>
+<a href="?op=auth" class="btn btn-secondary">
+    Cancel
+</a>
+<br>
+{%if ERR_MSG%}
+{{ERR_MSG}}
+{% endif %}
+
+{% endif %}
+
+{% endblock %}
