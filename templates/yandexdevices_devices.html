@@ -7,6 +7,7 @@
             <tr>
                 <th>Title</th>
                 <th>Type</th>
+                <th>Room</th>
                 <th>IOT id</th>
                 <th>Updated</th>
                 <th></th>
@@ -20,6 +21,7 @@
                     <a href="?op=edit&device={{device.id}}">{{ device.title }}</a>
                 </td>
                 <td class="py-1">{{ device.device_type }}</td>
+                <td class="py-1">{{ device.room }}</td>
                 <td class="py-1">{{ device.iot_id }}</td>
                 <td class="py-1" id="dev{{device.id}}_updated">
                     {{device.updated}}
@@ -35,4 +37,30 @@
         </tbody>
     </table>
 </div>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        socket.on('connect', function() {
+            sid = socket.id;
+            socket.emit('subscribeData',["YandexDevices"]);
+        });
+        socket.on('YandexDevices', function(data) {
+            //console.log(data)
+            if (data.operation == "updateProperty"){
+                id = "z2p_"+data.data['id']+"_value"
+                if (document.getElementById(id))
+                    document.getElementById(id).innerHTML  = data.data.value;
+                id = "z2p_"+data.data['id']+"_converted"
+                if (document.getElementById(id))
+                    document.getElementById(id).innerHTML  = data.data.converted;
+            }
+            if (data.operation == "updateDevice"){
+                id = "dev"+data.data['id']+"_updated"
+                if (document.getElementById(id))
+                    document.getElementById(id).innerHTML  = data.data.updated;
+            }
+
+        });
+        socket.emit('subscribeData',["YandexDevices"]);
+    })
+</script>
 {% endblock %}

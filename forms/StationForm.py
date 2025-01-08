@@ -12,7 +12,7 @@ class StationForm(FlaskForm):
     platform = StringField('Platform')
     iot_id = StringField("IOT id")
     ip = StringField("IP")
-    tts = RadioField('TTS', choices=[(0, 'No'), (1, 'Local'), (2, 'Cloud')],default=0)
+    tts = RadioField('TTS', choices=[(0, 'No'), (1, 'Local (not work)'), (2, 'Cloud')],default=0)
     min_level = StringField("Min level SAY")
     device_token = StringField("Token")
     submit = SubmitField('Submit')

@@ -11,6 +11,9 @@
 <a href="?op=auth" class="btn btn-info">
     Authorization
 </a>
+<button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#settingsModal">
+  Settings
+</button>
 <ul class="nav nav-tabs mt-3" id="configTabs" role="tablist">
     <li class="nav-item">
         <a class="nav-link tab-button {% if tab == ''%}active{%endif%}" href="?tab=">Stations</a>
@@ -25,5 +28,34 @@
     </div>
   </div>
 
+ <!-- Модальное окно с настройками -->
+ <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModal" aria-hidden="true">
+  <div class="modal-dialog">
+      <div class="modal-content">
+          <form  method="POST">
+          <div class="modal-header">
+              <h5 class="modal-title" id="exampleModalLabel">Settings</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+              <!-- Поля формы -->
+              {{ form.hidden_tag() }}
+              <div class="mb-3">
+                  {{ form.get_data.label(class="form-label") }}
+                  {{ form.get_data(class="form-check") }}
+              </div>
+              <div class="mb-3">
+                  {{ form.update_period.label(class="form-label") }}
+                  {{ form.update_period(class="form-control") }}
+              </div>
+          </div>
+          <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              <button type="submit" class="btn btn-primary">Submit</button>
+          </div>
+          </form>
+      </div>
+  </div>
+</div>
 
 {% endblock %}
