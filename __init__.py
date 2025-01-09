@@ -1,7 +1,6 @@
 import datetime
 import os
 import re
-import json
 import threading
 from flask import redirect, request, jsonify, render_template
 from app.authentication.handlers import handle_admin_required
@@ -21,7 +20,10 @@ class YandexDevices(BasePlugin):
         super().__init__(app,__name__)
         self.title = "Yandex Devices"
         self.description = """Yandex Devices Plugin"""
-        self.actions = ["cycle","say"]
+        self.actions = ["cycle","say","widget"]
+        self.category = "Devices"
+        self.version = 0.2
+        self.author = 'Eraser'
 
     def initialization(self):
         cache_dir = os.path.join(getCacheDir(), self.name)
@@ -59,8 +61,11 @@ class YandexDevices(BasePlugin):
                 "AUTHORIZED": auth,
             }
             return self.render('yandexdevices_auth.html', content)
+        
         if op == 'update':
+            self.refresh_stations()
             self.update_devices()
+            return redirect("YandexDevices")
 
         if op == "generate_dev_token":
             id = request.args.get('id', None)
@@ -376,11 +381,7 @@ class YandexDevices(BasePlugin):
                     new_value = value
                     old_value = req_skill.value
 
-                    if (
-                        str(new_value) != str(old_value)
-                        and req_skill.linked_object
-                        and req_skill.linked_property
-                    ):
+                    if str(new_value) != str(old_value) and req_skill.linked_object and req_skill.linked_property:
                         linked_object_property = (
                             f"{req_skill.linked_object}.{req_skill.linked_property}"
                         )
@@ -392,11 +393,7 @@ class YandexDevices(BasePlugin):
                         req_skill.updated = datetime.datetime.now()
                         session.commit()
 
-                    if (
-                        new_value != old_value
-                        and req_skill.linked_object
-                        and req_skill.linked_method
-                    ):
+                    if new_value != old_value and req_skill.linked_object and req_skill.linked_method:
                         method_params = {
                             "NEW_VALUE": new_value,
                             "OLD_VALUE": old_value,
@@ -431,11 +428,7 @@ class YandexDevices(BasePlugin):
                     new_value = value
                     old_value = req_prop.value
 
-                    if (
-                        new_value != old_value
-                        and req_prop.linked_object
-                        and req_prop.linked_property
-                    ):
+                    if new_value != old_value and req_prop.linked_object and req_prop.linked_property:
                         linked_object_property = (
                             f"{req_prop.linked_object}.{req_prop.linked_property}"
                         )
@@ -446,11 +439,7 @@ class YandexDevices(BasePlugin):
                         req_prop.updated = datetime.datetime.now()
                         session.commit()
 
-                    if (
-                        new_value != old_value
-                        and req_prop.linked_object
-                        and req_prop.linked_method
-                    ):
+                    if new_value != old_value and req_prop.linked_object and req_prop.linked_method:
                         method_params = {
                             "NEW_VALUE": new_value,
                             "OLD_VALUE": old_value,
@@ -499,7 +488,16 @@ class YandexDevices(BasePlugin):
                     self.send_command_to_station(station, 'повтори за мной ' + message)
                 elif station.tts == 2:  # cloud TTS
                     self.send_cloud_TTS(station, message)
-    
+
+    def widget(self):
+        with session_scope() as session:
+            stations = session.query(YaStation).all()
+            devices = session.query(YaDevices).all()
+            content = {}
+            content['stations'] = len(stations)
+            content['devices'] = len(devices)
+        return render_template("widget_yandexdevices.html",**content)
+
     def setDataDevice(self, device: YaDevices, property: YaCapabilities, value):
         if property.title == "devices.capabilities.on_off":
             if value == 1:
@@ -518,7 +516,7 @@ class YandexDevices(BasePlugin):
             ]
         }
 
-        result = self.quazar.api_request('https://iot.quasar.yandex.ru/m/user/devices/'+device.iot_id+'/actions', 'POST', payload)
+        result = self.quazar.api_request('https://iot.quasar.yandex.ru/m/user/devices/' + device.iot_id + '/actions', 'POST', payload)
         self.logger.debug(result)
 
     def send_command_to_station(self, station, command):
