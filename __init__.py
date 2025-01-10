@@ -339,13 +339,15 @@ class YandexDevices(BasePlugin):
             # Цикл по всем возможностям устройства
             if isinstance(data.get("capabilities"), list):
                 for capability in data["capabilities"]:
+                    if capability is None:
+                        continue
                     c_type = capability["type"]
 
                     if capability["type"] == "devices.capabilities.on_off":
                         c_type = capability["type"]
-                    elif capability.get("state", {}).get("instance"):
+                    elif capability.get("state", {}) is not None and capability.get("state", {}).get("instance"):
                         c_type += f'.{capability["state"]["instance"]}'
-                    elif capability.get("parameters", {}).get("instance"):
+                    elif capability.get("parameters", {}) is not None and capability.get("parameters", {}).get("instance"):
                         c_type += f'.{capability["parameters"]["instance"]}'
                     else:
                         c_type += ".unknown"
@@ -365,17 +367,16 @@ class YandexDevices(BasePlugin):
 
                     # Основные возможности, меняем значение
                     value = None
-                    if isinstance(capability.get("state", {}).get("value"), bool):
+                    if capability.get("state", {}) is not None and isinstance(capability.get("state", {}).get("value"), bool):
                         value = int(capability["state"]["value"])
-                    elif capability.get("state", {}).get("instance") == "color":
+                    elif capability.get("state", {}) is not None and capability.get("state", {}).get("instance") == "color":
                         value = capability["state"]["value"]["id"]
-                    elif (
-                        capability.get("state", {}).get("instance") == "scene"
-                    ):  # xor2016: добавлена сцена для Я.лампочки
+                    elif capability.get("state", {}) is not None and capability.get("state", {}).get("instance") == "scene":  # xor2016: добавлена сцена для Я.лампочки
                         value = capability["state"]["value"]["id"]
                     else:
-                        value = capability.get("state", {}).get("value")
-                        if value is None:
+                        if capability.get("state", {}) is not None:
+                            value = capability.get("state", {}).get("value")
+                        else:
                             value = "?"
 
                     new_value = value
