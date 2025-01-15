@@ -3,6 +3,7 @@ import json
 import requests
 import re
 import urllib.parse
+import certifi
 
 class QuazarApi():
     def __init__(self, cache_dir, logger):
@@ -39,9 +40,9 @@ class QuazarApi():
                 if isinstance(params, dict):
                     params = json.dumps(params)
                 if method == 'POST':
-                    response = session.post(url, data=params, headers=headers, cookies=session.cookies, verify=False)
+                    response = session.post(url, data=params, headers=headers, cookies=session.cookies, verify=certifi.where())
                 else:
-                    response = session.request(method, url, data=params, headers=headers, cookies=session.cookies, verify=False)
+                    response = session.request(method, url, data=params, headers=headers, cookies=session.cookies, verify=certifi.where())
         except requests.RequestException as e:
             self.logger.error(f"Request error: {e}")
             return None
@@ -78,7 +79,7 @@ class QuazarApi():
 
         # Perform the GET request
         try:
-            response = session.get(url, headers=headers, cookies=session.cookies, verify=False)
+            response = session.get(url, headers=headers, cookies=session.cookies, verify=certifi.where())
         except requests.RequestException as e:
             self.logger.error(f"Request error: {e}")
             return False
@@ -110,7 +111,7 @@ class QuazarApi():
                 session.cookies.update(cookies)
         
         # Perform a GET request
-        response = session.get(url, allow_redirects=True, verify=False)
+        response = session.get(url, allow_redirects=True, verify=certifi.where())
 
         # Check if the CSRF token is in the response body
         match = re.search(r'"csrf_token" value="(.+?)"', response.text)
@@ -144,7 +145,7 @@ class QuazarApi():
                 cookies = requests.utils.cookiejar_from_dict(json.load(f))
                 session.cookies.update(cookies)
 
-            response = session.post('https://passport.yandex.ru/registration-validations/auth/password/submit', data=postvars, cookies=session.cookies, verify=False)
+            response = session.post('https://passport.yandex.ru/registration-validations/auth/password/submit', data=postvars, cookies=session.cookies, verify=certifi.where())
 
             data = response.json()
 
@@ -179,7 +180,7 @@ class QuazarApi():
             session.cookies.update(cookies)
 
         # Perform POST request
-        response = session.post(url, data=postvars, cookies=session.cookies, verify=False)
+        response = session.post(url, data=postvars, cookies=session.cookies, verify=certifi.where())
 
         # Assuming the response is JSON
         data = response.json()
