@@ -13,6 +13,7 @@ from app.core.lib.cache import deleteFromCache, getCacheDir
 from plugins.YandexDevices.forms.SettingForms import SettingsForm
 from app.database import session_scope, row2dict
 from plugins.YandexDevices.QuazarApi import QuazarApi
+from time import sleep
 
 class YandexDevices(BasePlugin):
 
@@ -472,9 +473,13 @@ class YandexDevices(BasePlugin):
                     self.setDataDevice(device, property, val)
 
     def say(self, message, level=0, args=None):
-        with session_scope() as session:
-            station = session.query(YaStation).all()
-            for station in station:
+         with session_scope() as session:
+            if args and 'station' in args:
+                stations = session.query(YaStation).filter(YaStation.title==args['station'])
+            else:
+                stations = session.query(YaStation).all()
+
+            for station in stations:
                 if station.tts == 0 or station.tts is None:
                     continue
                 minlevel = station.min_level
@@ -488,7 +493,15 @@ class YandexDevices(BasePlugin):
                 if station.tts == 1:  # local TTS
                     self.send_command_to_station(station, 'повтори за мной ' + message)
                 elif station.tts == 2:  # cloud TTS
-                    self.send_cloud_TTS(station, message)
+                    if len(message)>=100:
+                        sentences = re.split("\. |\.\.\.|! ", message)
+                        for sentence in sentences:
+                            pause = int(len(sentence)/8+1) #экспериментально
+                            self.send_cloud_TTS(station, sentence)
+                            self.logger.info(sentence)
+                            sleep(pause)
+                    else:
+                        self.send_cloud_TTS(station, message)
 
     def widget(self):
         with session_scope() as session:
@@ -522,6 +535,12 @@ class YandexDevices(BasePlugin):
 
     def send_command_to_station(self, station, command):
         pass
+
+    def send_command_to_stationCloud(self, station, command):
+        with session_scope() as session:
+            ystation = session.query(YaStation).filter(YaStation.title==station).one()
+            if ystation and command:
+                self.send_cloud_TTS(ystation,command,'text_action')
 
     def send_cloud_TTS(self, station: YaStation, message: str, action='phrase_action'):
 
