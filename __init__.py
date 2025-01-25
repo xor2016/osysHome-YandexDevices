@@ -496,9 +496,8 @@ class YandexDevices(BasePlugin):
                     if len(message)>=100:
                         sentences = re.split("\. |\.\.\.|! ", message)
                         for sentence in sentences:
-                            pause = int(len(sentence)/8+1) #экспериментально
+                            pause = 2 if len(sentence)<40 else int(len(sentence)/8) #экспериментально
                             self.send_cloud_TTS(station, sentence)
-                            self.logger.info(sentence)
                             sleep(pause)
                     else:
                         self.send_cloud_TTS(station, message)
