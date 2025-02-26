@@ -49,6 +49,9 @@ class QuazarApi():
 
         # Process the response
         result_code = response.status_code
+        if result_code == 401:
+            self.logger.error("Unauthorized access")
+            return None
         try:
             data = response.json()
         except ValueError:

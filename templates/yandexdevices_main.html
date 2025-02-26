@@ -48,7 +48,11 @@
                   {{ form.update_period.label(class="form-label") }}
                   {{ form.update_period(class="form-control") }}
               </div>
-          </div>
+              <div class="mb-3">
+                {{ form.update_linked.label(class="form-label") }}
+                {{ form.update_linked(class="form-control-check") }}
+            </div>
+        </div>
           <div class="modal-footer">
               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
               <button type="submit" class="btn btn-primary">Submit</button>

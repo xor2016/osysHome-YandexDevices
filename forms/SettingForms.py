@@ -7,4 +7,5 @@ from wtforms.widgets import PasswordInput
 class SettingsForm(FlaskForm):
     get_data = BooleanField('Enable get device data', validators=[Optional()])
     update_period = IntegerField('Default update period device data (seconds)', validators=[Optional()])
+    update_linked = BooleanField('Update only linked devices', validators=[Optional()])
     submit = SubmitField('Submit')

@@ -14,6 +14,7 @@ from plugins.YandexDevices.forms.SettingForms import SettingsForm
 from app.database import session_scope, row2dict
 from plugins.YandexDevices.QuazarApi import QuazarApi
 from time import sleep
+from sqlalchemy import and_, select, distinct
 
 class YandexDevices(BasePlugin):
 
@@ -86,10 +87,11 @@ class YandexDevices(BasePlugin):
         if request.method == 'GET':
             settings.get_data.data = self.config.get('get_device_data',False)
             settings.update_period.data = self.config.get('update_period',60)
+            settings.update_linked.data = self.config.get('update_linked',True)
         else:
             if settings.validate_on_submit():
                 self.config["get_device_data"] = settings.get_data.data
-                self.config["update_period"] = settings.update_period.data
+                self.config["update_linked"] = settings.update_linked.data
                 self.saveConfig()
 
         if tab == 'devices':
@@ -284,10 +286,29 @@ class YandexDevices(BasePlugin):
 
     def refresh_devices_data(self):
         with session_scope() as session:
-
             self.logger.debug("Begin get data devices")
+
             # Получение списка устройств
-            devices = session.query(YaDevices).all()
+            update_linked = self.config.get('update_linked',True)
+            if update_linked:
+                # Подзапрос для выборки уникальных device_id из YaCapabilities
+                subquery = (
+                    select(distinct(YaCapabilities.device_id))
+                    .where(
+                        and_(
+                            YaCapabilities.linked_object is not None,
+                            YaCapabilities.linked_object != ""
+                        )
+                    )
+                )
+                # Основной запрос для выборки устройств из YaDevices
+                devices = (
+                    session.query(YaDevices)
+                    .filter(YaDevices.id.in_(subquery))  # Фильтруем по результатам подзапроса
+                    .all()
+                )
+            else:
+                devices = session.query(YaDevices).all()  # Все устройства
             threads = []
             for device in devices:
 
@@ -312,7 +333,7 @@ class YandexDevices(BasePlugin):
             device = session.query(YaDevices).filter(YaDevices.id == id).one_or_none()
             if not device:
                 return
-            self.logger.debug(f"Begin get data device - {device.title}")
+            self.logger.info(f"Begin get data device - {device.title}({device.room})")
             # Узнаем IOT_ID
             iot_id = device.iot_id
 
@@ -320,8 +341,12 @@ class YandexDevices(BasePlugin):
             data = self.quazar.api_request(
                 f"https://iot.quasar.yandex.ru/m/user/devices/{iot_id}"
             )
-            # self.logger.debug(data)
+            self.logger.debug(data)
             if not isinstance(data, dict):
+                device.updated = datetime.datetime.now()
+                session.commit()
+                self.sendDataToWebsocket("updateDevice", row2dict(device))
+                self.logger.info(f"End get data device - {device.title}({device.room})")
                 return
 
             current_status = 0
@@ -458,7 +483,7 @@ class YandexDevices(BasePlugin):
             device.updated = datetime.datetime.now()
             session.commit()
             self.sendDataToWebsocket("updateDevice", row2dict(device))
-            self.logger.debug(f"End get data device - {device.title}")
+            self.logger.info(f"End get data device - {device.title}({device.room})")
 
     def changeLinkedProperty(self, obj, prop, val):
         with session_scope() as session:
@@ -553,7 +578,7 @@ class YandexDevices(BasePlugin):
             message = message[:99]
 
         # Debug logging if error monitoring is enabled
-        self.logger.debug(f"Sending cloud '{action}: {message}' to {station.title}")
+        self.logger.info(f"Sending cloud '{action}: {message}' to {station.title}")
 
         if not station.tts_scenario:
             return False
