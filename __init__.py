@@ -8,7 +8,7 @@ from plugins.YandexDevices.models.YaDevices import YaDevices
 from plugins.YandexDevices.models.YaStation import YaStation
 from plugins.YandexDevices.models.YaCapabilities import YaCapabilities
 from app.core.main.BasePlugin import BasePlugin
-from app.core.lib.object import setProperty, getProperty, callMethod, setLinkToObject, removeLinkFromObject
+from app.core.lib.object import setProperty, getProperty, callMethod, setLinkToObject, removeLinkFromObject, updateProperty
 from app.core.lib.cache import deleteFromCache, getCacheDir
 from plugins.YandexDevices.forms.SettingForms import SettingsForm
 from app.database import session_scope, row2dict
@@ -63,7 +63,7 @@ class YandexDevices(BasePlugin):
                 "AUTHORIZED": auth,
             }
             return self.render('yandexdevices_auth.html', content)
-        
+
         if op == 'update':
             self.refresh_stations()
             self.update_devices()
@@ -408,12 +408,11 @@ class YandexDevices(BasePlugin):
                     new_value = value
                     old_value = req_skill.value
 
-                    if str(new_value) != str(old_value) and req_skill.linked_object and req_skill.linked_property:
+                    if req_skill.linked_object and req_skill.linked_property:
                         linked_object_property = (
                             f"{req_skill.linked_object}.{req_skill.linked_property}"
                         )
-                        if new_value != getProperty(linked_object_property):
-                            setProperty(linked_object_property, new_value, self.name)
+                        updateProperty(linked_object_property, new_value, self.name)
 
                     if new_value != old_value:
                         req_skill.value = str(new_value)
@@ -455,7 +454,7 @@ class YandexDevices(BasePlugin):
                     new_value = value
                     old_value = req_prop.value
 
-                    if new_value != old_value and req_prop.linked_object and req_prop.linked_property:
+                    if req_prop.linked_object and req_prop.linked_property:
                         linked_object_property = (
                             f"{req_prop.linked_object}.{req_prop.linked_property}"
                         )
@@ -498,9 +497,9 @@ class YandexDevices(BasePlugin):
                     self.setDataDevice(device, property, val)
 
     def say(self, message, level=0, args=None):
-         with session_scope() as session:
+        with session_scope() as session:
             if args and 'station' in args:
-                stations = session.query(YaStation).filter(YaStation.title==args['station'])
+                stations = session.query(YaStation).filter(YaStation.title == args['station'])
             else:
                 stations = session.query(YaStation).all()
 
@@ -518,10 +517,10 @@ class YandexDevices(BasePlugin):
                 if station.tts == 1:  # local TTS
                     self.send_command_to_station(station, 'повтори за мной ' + message)
                 elif station.tts == 2:  # cloud TTS
-                    if len(message)>=100:
-                        sentences = re.split("\. |\.\.\.|! ", message)
+                    if len(message) >= 100:
+                        sentences = re.split(r'\.\.\.|[.!?]\s*', message)
                         for sentence in sentences:
-                            pause = int(len(sentence)/8+1) #экспериментально
+                            pause = int(len(sentence) / 8 + 1)  # экспериментально
                             self.send_cloud_TTS(station, sentence)
                             self.logger.info(sentence)
                             sleep(pause)
@@ -563,7 +562,7 @@ class YandexDevices(BasePlugin):
 
     def send_command_to_stationCloud(self, station, command):
         with session_scope() as session:
-            ystation = session.query(YaStation).filter(YaStation.title==station).one()
+            ystation = session.query(YaStation).filter(YaStation.title == station).one()
             if ystation and command:
                 self.send_cloud_TTS(ystation,command,'text_action')
 
