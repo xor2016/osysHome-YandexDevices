@@ -82,6 +82,16 @@ class YandexDevices(BasePlugin):
                 from plugins.YandexDevices.forms.StationForm import editStation
                 result = editStation(request)
                 return result
+            
+        if op == 'delete':
+            if device:
+                with session_scope() as session:
+                    session.query(YaDevices).filter(YaDevices.id == device).delete(synchronize_session=False)
+                    session.commit()
+            if station:
+                with session_scope() as session:
+                    session.query(YaStation).filter(YaStation.id == station).delete(synchronize_session=False)
+                    session.commit()
 
         settings = SettingsForm()
         if request.method == 'GET':

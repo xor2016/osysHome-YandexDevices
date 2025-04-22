@@ -41,16 +41,16 @@
               <!-- Поля формы -->
               {{ form.hidden_tag() }}
               <div class="mb-3">
+                  {{ form.get_data(class="form-control-check") }}
                   {{ form.get_data.label(class="form-label") }}
-                  {{ form.get_data(class="form-check") }}
               </div>
               <div class="mb-3">
                   {{ form.update_period.label(class="form-label") }}
                   {{ form.update_period(class="form-control") }}
               </div>
               <div class="mb-3">
-                {{ form.update_linked.label(class="form-label") }}
                 {{ form.update_linked(class="form-control-check") }}
+                {{ form.update_linked.label(class="form-label") }}
             </div>
         </div>
           <div class="modal-footer">
