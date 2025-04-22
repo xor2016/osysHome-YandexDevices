@@ -86,6 +86,7 @@ class YandexDevices(BasePlugin):
         if op == 'delete':
             if device:
                 with session_scope() as session:
+                    session.query(YaCapabilities).filter(YaCapabilities.device_id == device).delete(synchronize_session=False)
                     session.query(YaDevices).filter(YaDevices.id == device).delete(synchronize_session=False)
                     session.commit()
             if station:
