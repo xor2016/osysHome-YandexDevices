@@ -107,6 +107,7 @@ class YandexDevices(BasePlugin):
 
         if tab == 'devices':
             devices = YaDevices.query.all()
+            devices = [row2dict(device) for device in devices]
             content = {
                 "devices": devices,
                 "tab": tab,
@@ -115,6 +116,7 @@ class YandexDevices(BasePlugin):
             return self.render('yandexdevices_devices.html', content)
 
         stations = YaStation.query.all()
+        stations = [row2dict(station) for station in stations]
         content = {
             'stations': stations,
             "tab": tab,
@@ -190,7 +192,7 @@ class YandexDevices(BasePlugin):
                         rec.device_type = device['type']
                         rec.room = room['name']
                         rec.icon = device['icon_url']
-                        rec.updated = datetime.datetime.now()
+                        rec.updated = datetime.datetime.now(datetime.timezone.utc)
                         session.commit()
 
                         # обновление станций
@@ -201,7 +203,7 @@ class YandexDevices(BasePlugin):
 
                         if rec_station:
                             rec_station.iot_id = device['id']
-                            rec_station.updated = datetime.datetime.now()
+                            rec_station.updated = datetime.datetime.now(datetime.timezone.utc)
                             session.commit()
 
         except Exception as ex:
@@ -327,7 +329,7 @@ class YandexDevices(BasePlugin):
                 if period is None:
                     period = self.config.get("update_period", 60)  # get default period from settings
                 dt = device.updated + datetime.timedelta(seconds=period)
-                if datetime.datetime.now() < dt:
+                if datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) < dt:
                     continue
                 t = threading.Thread(name="YandexDevice_" + device.title,target=self.refresh_device_data, args=(device.id,))
                 threads.append(t)
@@ -354,7 +356,7 @@ class YandexDevices(BasePlugin):
             )
             self.logger.debug(data)
             if not isinstance(data, dict):
-                device.updated = datetime.datetime.now()
+                device.updated = datetime.datetime.now(datetime.timezone.utc)
                 session.commit()
                 self.sendDataToWebsocket("updateDevice", row2dict(device))
                 self.logger.info(f"End get data device - {device.title}({device.room})")
@@ -427,7 +429,7 @@ class YandexDevices(BasePlugin):
 
                     if new_value != old_value:
                         req_skill.value = str(new_value)
-                        req_skill.updated = datetime.datetime.now()
+                        req_skill.updated = datetime.datetime.now(datetime.timezone.utc)
                         session.commit()
 
                     if new_value != old_value and req_skill.linked_object and req_skill.linked_method:
@@ -473,7 +475,7 @@ class YandexDevices(BasePlugin):
 
                     if new_value != old_value:
                         req_prop.value = new_value
-                        req_prop.updated = datetime.datetime.now()
+                        req_prop.updated = datetime.datetime.now(datetime.timezone.utc)
                         session.commit()
 
                     if new_value != old_value and req_prop.linked_object and req_prop.linked_method:
@@ -490,7 +492,7 @@ class YandexDevices(BasePlugin):
                             self.name,
                         )
 
-            device.updated = datetime.datetime.now()
+            device.updated = datetime.datetime.now(datetime.timezone.utc)
             session.commit()
             self.sendDataToWebsocket("updateDevice", row2dict(device))
             self.logger.info(f"End get data device - {device.title}({device.room})")
