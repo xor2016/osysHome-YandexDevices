@@ -11,7 +11,7 @@ from app.core.main.BasePlugin import BasePlugin
 from app.core.lib.object import setProperty, getProperty, callMethod, setLinkToObject, removeLinkFromObject, updateProperty
 from app.core.lib.cache import deleteFromCache, getCacheDir
 from plugins.YandexDevices.forms.SettingForms import SettingsForm
-from app.database import session_scope, row2dict
+from app.database import session_scope, row2dict, get_now_to_utc
 from plugins.YandexDevices.QuazarApi import QuazarApi
 from time import sleep
 from sqlalchemy import and_, select, distinct
@@ -86,7 +86,6 @@ class YandexDevices(BasePlugin):
         if op == 'delete':
             if device:
                 with session_scope() as session:
-                    session.query(YaCapabilities).filter(YaCapabilities.device_id == device).delete(synchronize_session=False)
                     session.query(YaDevices).filter(YaDevices.id == device).delete(synchronize_session=False)
                     session.commit()
             if station:
@@ -192,7 +191,7 @@ class YandexDevices(BasePlugin):
                         rec.device_type = device['type']
                         rec.room = room['name']
                         rec.icon = device['icon_url']
-                        rec.updated = datetime.datetime.now(datetime.timezone.utc)
+                        rec.updated = get_now_to_utc()
                         session.commit()
 
                         # обновление станций
@@ -203,7 +202,7 @@ class YandexDevices(BasePlugin):
 
                         if rec_station:
                             rec_station.iot_id = device['id']
-                            rec_station.updated = datetime.datetime.now(datetime.timezone.utc)
+                            rec_station.updated = get_now_to_utc()
                             session.commit()
 
         except Exception as ex:
@@ -329,7 +328,7 @@ class YandexDevices(BasePlugin):
                 if period is None:
                     period = self.config.get("update_period", 60)  # get default period from settings
                 dt = device.updated + datetime.timedelta(seconds=period)
-                if datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) < dt:
+                if get_now_to_utc() < dt:
                     continue
                 t = threading.Thread(name="YandexDevice_" + device.title,target=self.refresh_device_data, args=(device.id,))
                 threads.append(t)
@@ -356,7 +355,7 @@ class YandexDevices(BasePlugin):
             )
             self.logger.debug(data)
             if not isinstance(data, dict):
-                device.updated = datetime.datetime.now(datetime.timezone.utc)
+                device.updated = get_now_to_utc()
                 session.commit()
                 self.sendDataToWebsocket("updateDevice", row2dict(device))
                 self.logger.info(f"End get data device - {device.title}({device.room})")
@@ -429,7 +428,7 @@ class YandexDevices(BasePlugin):
 
                     if new_value != old_value:
                         req_skill.value = str(new_value)
-                        req_skill.updated = datetime.datetime.now(datetime.timezone.utc)
+                        req_skill.updated = get_now_to_utc()
                         session.commit()
 
                     if new_value != old_value and req_skill.linked_object and req_skill.linked_method:
@@ -475,7 +474,7 @@ class YandexDevices(BasePlugin):
 
                     if new_value != old_value:
                         req_prop.value = new_value
-                        req_prop.updated = datetime.datetime.now(datetime.timezone.utc)
+                        req_prop.updated = get_now_to_utc()
                         session.commit()
 
                     if new_value != old_value and req_prop.linked_object and req_prop.linked_method:
@@ -492,7 +491,7 @@ class YandexDevices(BasePlugin):
                             self.name,
                         )
 
-            device.updated = datetime.datetime.now(datetime.timezone.utc)
+            device.updated = get_now_to_utc()
             session.commit()
             self.sendDataToWebsocket("updateDevice", row2dict(device))
             self.logger.info(f"End get data device - {device.title}({device.room})")
