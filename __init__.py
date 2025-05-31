@@ -255,20 +255,31 @@ class YandexDevices(BasePlugin):
                     payload = {
                         'name': name_encoded,
                         'icon': 'home',
-                        'triggers': [{'type': 'scenario.trigger.voice', 'value': name_encoded[5:]}],
+                        'triggers': [{
+                            'trigger': {
+                                'type': 'scenario.trigger.voice',
+                                'value': name_encoded[5:],  # Аналог mb_substr($nameEncode, 4)
+                            }
+                        }],
                         'steps': [{
-                            'type': 'scenarios.steps.actions',
+                            'type': 'scenarios.steps.actions.v2',
                             'parameters': {
-                                'requested_speaker_capabilities': [],
-                                'launch_devices': [{
+                                'items': [{
                                     'id': station_id,
-                                    'capabilities': [{
-                                        'type': 'devices.capabilities.quasar.server_action',
-                                        'state': {
-                                            'instance': 'phrase_action',
-                                            'value': 'Сценарий для osysHome. НЕ УДАЛЯТЬ!'
-                                        }
-                                    }]
+                                    'type': 'step.action.item.device',
+                                    'value': {
+                                        'id': station_id,
+                                        'item_type': 'device',
+                                        'capabilities': [{
+                                            'type': 'devices.capabilities.quasar',
+                                            'state': {
+                                                'instance': 'tts',
+                                                'value': {
+                                                    'text': 'Сценарий для osys. НЕ УДАЛЯТЬ!'
+                                                }
+                                            }
+                                        }]
+                                    }
                                 }]
                             }
                         }]
@@ -600,29 +611,35 @@ class YandexDevices(BasePlugin):
             'name': name_encode,
             'icon': 'home',
             'triggers': [{
-                'type': 'scenario.trigger.voice',
-                'value': name_encode,
+                'trigger': {
+                    'type': 'scenario.trigger.voice',
+                    'value': name_encode,
+                }
             }],
             'steps': [{
-                'type': 'scenarios.steps.actions',
+                'type': 'scenarios.steps.actions.v2',
                 'parameters': {
-                    'requested_speaker_capabilities': [],
-                    'launch_devices': [{
+                    'items': [{
                         'id': station.iot_id,
-                        'capabilities': [{
-                            'type': 'devices.capabilities.quasar.server_action',
-                            'state': {
-                                'instance': action,
-                                'value': message
-                            }
-                        }]
+                        'type': 'step.action.item.device',
+                        'value': {
+                            'id': station.iot_id,
+                            'item_type': 'device',
+                            'capabilities': [{
+                                'type': 'devices.capabilities.quasar.server_action',
+                                'state': {
+                                    'instance': action,
+                                    'value': message
+                                }
+                            }]
+                        }
                     }]
                 }
             }]
         }
 
         scenario_id = station.tts_scenario
-        result = self.quazar.api_request(f'https://iot.quasar.yandex.ru/m/user/scenarios/{scenario_id}', 'PUT', payload)
+        result = self.quazar.api_request(f'https://iot.quasar.yandex.ru/m/v4/user/scenarios/{scenario_id}', 'PUT', payload)
 
         if isinstance(result, dict) and result.get('status') == 'ok':
             payload = {}
