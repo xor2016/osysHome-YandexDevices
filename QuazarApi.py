@@ -174,7 +174,7 @@ class QuazarApi():
         # Encode the post data as application/x-www-form-urlencoded
         postvars = urllib.parse.urlencode(post_data)
 
-        url = 'https://passport.yandex.ru/auth/magic/status/'
+        url = 'https://passport.yandex.ru/auth/new/magic/status/'
 
         # Set up a session for persistent cookies
         session = requests.Session()
