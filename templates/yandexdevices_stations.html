@@ -1,46 +1,56 @@
 {% extends "yandexdevices_main.html" %}
 
 {% block tab %}
-<div class="table-responsive">
-    <table class="table table-hover table-striped">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Min level say</th>
-                <th>Online</th>
-                <th>Updated</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for station in stations %}
-            <tr>
-                <td class="py-1">
-                    <img src="{{ station.icon }}" height="50px" onError="this.src='/YandexDevices/static/YandexDevices.png'">
-                    <a href="?op=edit&station={{station.id}}">{{ station.title }}</a>
-                </td>
-                <td>
-                    {{station.min_level}}
-                </td>
-                <td class="py-1">
-                    {%if station.online%}
-                    <span class="badge bg-success">Online</span>
-                    {%else%}
-                    <span class="badge bg-danger">Offline</span>
-                    {%endif%}
-                </td>
-                <td class="py-1" id="dev{{station.id}}_updated">
-                    {{station.updated}}
-                </td>
-                <td  class="py-1" width="1%" nowrap>
-                    <div>
-                        <a href="?op=edit&station={{station.id}}" class="btn btn-success" title="Edit"><i class="feather icon-edit"></i></a>
-                        <a href="?op=delete&station={{station.id}}" onClick="return confirm('Are you sure? Please confirm.')" class="btn btn-danger" title="Delete"><i class="feather icon-trash"></i></a>
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+{% if stations|length == 0 %}
+<div class="text-center py-5 px-4 text-body-secondary">
+  <div class="display-6 text-body-secondary mb-3 opacity-25"><i class="feather icon-speaker" aria-hidden="true"></i></div>
+  <p class="mb-2 fw-semibold text-body">Станций пока нет</p>
+  <p class="small mb-4 col-md-8 mx-auto">Выполните авторизацию и обновление списка, чтобы подтянуть колонки из аккаунта Яндекса.</p>
+  <div class="d-flex flex-wrap justify-content-center gap-2">
+    <a href="?op=auth" class="btn btn-outline-primary btn-sm rounded-3">Авторизация</a>
+    <a href="?op=update" class="btn btn-primary btn-sm rounded-3">Обновить</a>
+  </div>
 </div>
+{% else %}
+<div class="table-responsive mx-n1">
+  <table class="table table-hover table-sm align-middle mb-0 border-secondary border-opacity-25">
+    <thead class="border-bottom border-secondary border-opacity-50">
+      <tr>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Станция</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Min level say</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Статус</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Обновлено</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap text-end bg-transparent border-0">Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for station in stations %}
+      <tr>
+        <td>
+          <div class="d-flex align-items-center gap-2">
+            <img src="{{ station.icon }}" alt="" width="40" height="40" class="rounded-3 border bg-body-secondary p-1 flex-shrink-0 object-fit-contain" onError="this.src='/YandexDevices/static/YandexDevices.png'">
+            <a class="link-body-emphasis link-underline link-underline-opacity-0 link-underline-opacity-75-hover fw-semibold" href="?op=edit&station={{ station.id }}">{{ station.title }}</a>
+          </div>
+        </td>
+        <td class="text-body-secondary">{{ station.min_level }}</td>
+        <td>
+          {% if station.online %}
+          <span class="badge rounded-pill text-bg-success">Online</span>
+          {% else %}
+          <span class="badge rounded-pill text-bg-danger">Offline</span>
+          {% endif %}
+        </td>
+        <td class="text-body-secondary small" id="dev{{ station.id }}_updated">{{ station.updated }}</td>
+        <td class="text-end text-nowrap">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Действия">
+            <a href="?op=edit&station={{ station.id }}" class="btn btn-outline-primary rounded-start-3" title="Изменить"><i class="feather icon-edit-2"></i></a>
+            <a href="?op=delete&station={{ station.id }}" onclick="return confirm('Удалить станцию?')" class="btn btn-outline-danger rounded-end-3" title="Удалить"><i class="feather icon-trash-2"></i></a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}

@@ -1,42 +1,54 @@
 {% extends "yandexdevices_main.html" %}
 
 {% block tab %}
-<div class="table-responsive">
-    <table class="table table-hover table-striped">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Type</th>
-                <th>Room</th>
-                <th>IOT id</th>
-                <th>Updated</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for device in devices %}
-            <tr>
-                <td class="py-1">
-                    <img src="{{ device.icon }}" height="30px" onError="this.src='/YandexDevices/static/YandexDevices.png'">
-                    <a href="?op=edit&device={{device.id}}">{{ device.title }}</a>
-                </td>
-                <td class="py-1">{{ device.device_type }}</td>
-                <td class="py-1">{{ device.room }}</td>
-                <td class="py-1">{{ device.iot_id }}</td>
-                <td class="py-1" id="dev{{device.id}}_updated">
-                    {{device.updated}}
-                </td>
-                <td  class="py-1" width="1%" nowrap>
-                    <div>
-                        <a href="?op=edit&device={{device.id}}" class="btn btn-success" title="Edit"><i class="feather icon-edit"></i></a>
-                        <a href="?op=delete&device={{device.id}}&tab=devices" onClick="return confirm('Are you sure? Please confirm.')" class="btn btn-danger" title="Delete"><i class="feather icon-trash"></i></a>
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+{% if devices|length == 0 %}
+<div class="text-center py-5 px-4 text-body-secondary">
+  <div class="display-6 text-body-secondary mb-3 opacity-25"><i class="feather icon-cpu" aria-hidden="true"></i></div>
+  <p class="mb-2 fw-semibold text-body">Устройств нет</p>
+  <p class="small mb-4 col-md-8 mx-auto">После авторизации нажмите «Обновить из облака», чтобы импортировать устройства из Яндекса.</p>
+  <div class="d-flex flex-wrap justify-content-center gap-2">
+    <a href="?op=auth" class="btn btn-outline-primary btn-sm rounded-3">Авторизация</a>
+    <a href="?op=update" class="btn btn-primary btn-sm rounded-3">Обновить</a>
+  </div>
 </div>
+{% else %}
+<div class="table-responsive mx-n1">
+  <table class="table table-hover table-sm align-middle mb-0 border-secondary border-opacity-25">
+    <thead class="border-bottom border-secondary border-opacity-50">
+      <tr>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Устройство</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Тип</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Комната</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">IOT id</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Обновлено</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap text-end bg-transparent border-0">Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for device in devices %}
+      <tr>
+        <td>
+          <div class="d-flex align-items-center gap-2">
+            <img src="{{ device.icon }}" alt="" width="32" height="32" class="rounded-3 border bg-body-secondary p-1 flex-shrink-0 object-fit-contain" onError="this.src='/YandexDevices/static/YandexDevices.png'">
+            <a class="link-body-emphasis link-underline link-underline-opacity-0 link-underline-opacity-75-hover fw-semibold" href="?op=edit&device={{ device.id }}">{{ device.title }}</a>
+          </div>
+        </td>
+        <td><code class="small user-select-all d-inline-block px-2 py-1 rounded-2 bg-body-secondary text-body-emphasis">{{ device.device_type }}</code></td>
+        <td class="text-body-secondary">{{ device.room }}</td>
+        <td><span class="font-monospace small text-body-secondary text-break">{{ device.iot_id }}</span></td>
+        <td class="text-body-secondary small" id="dev{{ device.id }}_updated">{{ device.updated }}</td>
+        <td class="text-end text-nowrap">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Действия">
+            <a href="?op=edit&device={{ device.id }}" class="btn btn-outline-primary rounded-start-3" title="Изменить"><i class="feather icon-edit-2"></i></a>
+            <a href="?op=delete&device={{ device.id }}&tab=devices" onclick="return confirm('Удалить устройство?')" class="btn btn-outline-danger rounded-end-3" title="Удалить"><i class="feather icon-trash-2"></i></a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         socket.on('connect', function() {
@@ -44,7 +56,6 @@
             socket.emit('subscribeData',["YandexDevices"]);
         });
         socket.on('YandexDevices', function(data) {
-            //console.log(data)
             if (data.operation == "updateProperty"){
                 id = "z2p_"+data.data['id']+"_value"
                 if (document.getElementById(id))

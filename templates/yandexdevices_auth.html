@@ -1,38 +1,111 @@
 {% extends "layouts/module_admin.html" %}
 {% block breadcrumb %}
 <li class="breadcrumb-item"><a href="YandexDevices">Yandex Devices</a></li>
+<li class="breadcrumb-item active" aria-current="page">Авторизация</li>
 {% endblock %}
 {% block module %}
-<h4>Autorization</h4>
-{% if AUTHORIZED is not none %} 
-State: 
-{%if AUTHORIZED%}
-<span class="badge bg-success">Authorized</span>
-{%else%}
-<span class="badge bg-danger">Not authorized</span>
-{%endif%}
-<a href="?op=auth&type=reset" class="btn btn-primary btn-sm">
-    Reset
-</a>
-<hr>
-<a href="?op=auth&type=qr" class="btn btn-primary">
-    QR code
-</a>
-{% else %}
-QR code
-<img src="{{QR_URL}}">
-<br>
-<a href="?op=auth&type=qr&track_id={{TRACK_ID}}&csrf_token={{CSRF_TOKEN}}" class="btn btn-primary">
-    Continue
-</a>
-<a href="?op=auth" class="btn btn-secondary">
-    Cancel
-</a>
-<br>
-{%if ERR_MSG%}
-{{ERR_MSG}}
-{% endif %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-8 col-xl-6">
+    <div class="card shadow-sm rounded-3 bg-body border border-secondary border-opacity-25">
+      <div class="card-body p-4 p-md-5">
+        <h1 class="h4 fw-semibold mb-1 text-body">Авторизация</h1>
+        <p class="text-body-secondary small mb-4">Доступ к устройствам Яндекса через аккаунт Яндекса</p>
 
-{% endif %}
-
+        {% if AUTHORIZED is not none %}
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+          <span class="text-body-secondary small">Состояние:</span>
+          {% if AUTHORIZED %}
+          <span class="badge rounded-pill text-bg-success">Авторизовано</span>
+          {% else %}
+          <span class="badge rounded-pill text-bg-secondary">Не авторизовано</span>
+          {% endif %}
+          <a href="?op=auth&type=reset" class="btn btn-sm btn-outline-danger rounded-3 ms-auto">Сбросить сессию</a>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="?op=auth&type=qr" class="btn btn-primary rounded-3">
+            <i class="feather icon-smartphone me-1"></i> Вход по QR-коду
+          </a>
+          <a href="YandexDevices" class="btn btn-outline-secondary rounded-3">Назад к плагину</a>
+        </div>
+        {% else %}
+        <h2 class="h6 fw-semibold mb-2">Вход по QR</h2>
+        {% if QR_URL %}
+        <p class="text-body-secondary small mb-3">
+          Отсканируйте QR-код камерой телефона (приложение Яндекса с ключом или Яндекс Паспорт). Либо откройте ссылку — в браузере нужно будет подтвердить вход.
+        </p>
+        <div class="d-flex flex-column align-items-start gap-3 mb-3">
+          <div id="yandex-qr-wrap" class="bg-body-secondary p-2 rounded-3 border border-secondary border-opacity-50 shadow-sm">
+            <canvas id="yandex-qr-canvas" width="240" height="240" class="d-block rounded-2" aria-label="QR-код для входа"></canvas>
+            <p id="yandex-qr-error" class="d-none text-danger small mb-0 mt-2 text-break">
+              Не удалось нарисовать QR в браузере. Нажмите «Открыть ссылку для подтверждения» ниже — вход тот же.
+            </p>
+          </div>
+          <a href="{{ QR_URL }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm rounded-3">
+            <i class="feather icon-external-link me-1"></i> Открыть ссылку для подтверждения
+          </a>
+        </div>
+        {% endif %}
+        {% if TRACK_ID %}
+        <a href="?op=auth&type=qr&track_id={{ TRACK_ID|urlencode }}&csrf_token={{ CSRF_TOKEN|urlencode }}" class="btn btn-primary rounded-3 me-2">
+          Продолжить (проверить вход)
+        </a>
+        {% endif %}
+        <a href="?op=auth" class="btn btn-outline-secondary rounded-3">Отмена</a>
+        {% if ERR_MSG %}
+        <div class="alert alert-warning mt-4 mb-0 rounded-3 small" role="alert">{{ ERR_MSG }}</div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
+
+{% block javascripts %}
+{{ super() }}
+{% if QR_URL is defined and QR_URL %}
+<script src="{{ url_for(segment ~ '.static', filename='js/qrcode.min.js') }}"></script>
+<script>
+(function () {
+    var text = {{ QR_URL | tojson }};
+
+    function showQrError() {
+        var canvas = document.getElementById('yandex-qr-canvas');
+        var err = document.getElementById('yandex-qr-error');
+        if (canvas) canvas.classList.add('d-none');
+        if (err) err.classList.remove('d-none');
+    }
+
+    function tryCanvas() {
+        var canvas = document.getElementById('yandex-qr-canvas');
+        if (!canvas || typeof QRCode === 'undefined' || typeof QRCode.toCanvas !== 'function') {
+            showQrError();
+            return;
+        }
+        try {
+            QRCode.toCanvas(canvas, text, {
+                width: 240,
+                margin: 2,
+                errorCorrectionLevel: 'M',
+                color: { dark: '#000000', light: '#ffffff' }
+            }, function (err) {
+                if (err) showQrError();
+            });
+        } catch (e) {
+            showQrError();
+        }
+    }
+
+    function run() {
+        tryCanvas();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', run);
+    } else {
+        run();
+    }
+})();
+</script>
+{% endif %}
+{% endblock javascripts %}

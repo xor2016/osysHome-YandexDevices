@@ -1,65 +1,274 @@
 {% extends "layouts/module_admin.html" %}
 {% block breadcrumb %}
-<li class="breadcrumb-item"><a href="YandexDevices">YandexDevices</a></li>
-<li class="breadcrumb-item">{{form.title.data}}</li>
+<li class="breadcrumb-item"><a href="YandexDevices">Yandex Devices</a></li>
+<li class="breadcrumb-item active" aria-current="page">{{ form.title.data }}</li>
 {% endblock %}
 {% block module %}
-{% if form.errors %}
-<div class="alert alert-warning mt-3">
-    <ul>
+  {% if form.errors %}
+  <div class="alert alert-warning rounded-3 border-0 shadow-sm mb-3" role="alert">
+    <ul class="mb-0 ps-3">
     {% for field, errors in form.errors.items() %}
         {% for error in errors %}
-            <li>{{field}}: {{ error }}</li>
+            <li><strong>{{ field }}</strong>: {{ error }}</li>
         {% endfor %}
     {% endfor %}
     </ul>
-</div>
-{% endif %}
-<form  method="POST">
-    <!-- Поля формы -->
-    {{ form.hidden_tag() }}
-    <div class="mb-3">
-        {{ form.title.label(class="form-label") }}
-        {{ form.title(class="form-control") }}
-    </div>
-    <div class="mb-3">
-        {{ form.platform.label(class="form-label") }}
-        {{ form.platform(class="form-control") }}
-    </div>
-    <div class="mb-3">
-        {{ form.iot_id.label(class="form-label") }}
-        {{ form.iot_id(class="form-control") }}
-    </div>
-    <div class="mb-3">
-        {{ form.ip.label(class="form-label") }}
-        {{ form.ip(class="form-control") }}
-    </div>
-    <div class="mb-3">
-        {% if form.device_token.data%}
+  </div>
+  {% endif %}
+
+  <div class="card shadow-sm rounded-3 bg-body border border-secondary border-opacity-25">
+    <div class="card-body p-4 p-md-5">
+      <h1 class="h5 fw-semibold mb-1 text-body">Редактирование станции</h1>
+      <p class="text-body-secondary small mb-4">Параметры колонки и локального доступа</p>
+
+      <form method="POST">
+        {{ form.hidden_tag() }}
+        <div class="row g-3">
+          <div class="col-md-6">
+            {{ form.title.label(class="form-label") }}
+            {{ form.title(class="form-control rounded-3") }}
+          </div>
+          <div class="col-md-6">
+            {{ form.platform.label(class="form-label") }}
+            {{ form.platform(class="form-control rounded-3") }}
+          </div>
+          <div class="col-md-6">
+            {{ form.iot_id.label(class="form-label") }}
+            {{ form.iot_id(class="form-control rounded-3 font-monospace") }}
+          </div>
+          <div class="col-md-6">
+            {{ form.ip.label(class="form-label") }}
+            {{ form.ip(class="form-control rounded-3", placeholder="192.168.1.5 или 192.168.1.5:1961") }}
+            <div class="form-text">Для TTS «Local (Glagol / LAN)»: IP колонки в вашей сети; порт по умолчанию 1961 (можно задать как <code>IP:порт</code>).</div>
+          </div>
+        </div>
+
+        <hr class="my-4 border-secondary-subtle">
+
+        <div class="mb-4">
+          {% if form.device_token.data %}
             {{ form.device_token.label(class="form-label") }}
-            {{ form.device_token(class="form-control readonly") }}
-	    {%else%}
-			<p>
-				Необходимо сформировать токен доступа для локального управления колонкой!<br>
-				<a href="?op=generate_dev_token&id={{id}}" class="btn btn-primary ">Сформировать токен</a>		
-			</p>
-		{%endif%}
-    </div>
-    <div>
-        {{ form.tts.label(class="form-label me-3") }}
-        {% for choice in form.tts %}
-        <div class="form-check form-check-inline">
+            {{ form.device_token(class="form-control rounded-3 font-monospace bg-body-secondary") }}
+          {% else %}
+            <div class="alert alert-info border-0 rounded-3 small mb-0" role="status">
+              <p class="mb-2 fw-semibold">Токен локального управления</p>
+              <p class="mb-3">Сформируйте токен для локального управления колонкой.</p>
+              <a href="?op=generate_dev_token&id={{ id }}" class="btn btn-primary btn-sm rounded-3">Сформировать токен</a>
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="mb-3">
+          {{ form.tts.label(class="form-label d-block mb-2") }}
+          {% for choice in form.tts %}
+          <div class="form-check">
             {{ choice(class="form-check-input") }}
             <label class="form-check-label" for="{{ choice.id }}">{{ choice.label }}</label>
+          </div>
+          {% endfor %}
         </div>
-        {% endfor %}
-    </div>
-    <div class="mb-3">
-        {{ form.min_level.label(class="form-label") }}
-        {{ form.min_level(class="form-control") }}
-    </div>
 
-    <button type="submit" class="btn btn-primary">Submit</button>
-    <a href="YandexDevices" class="btn btn-secondary">Cancel</a>
-</form>
+        <div class="mb-4">
+          {{ form.min_level.label(class="form-label") }}
+          {{ form.min_level(class="form-control rounded-3") }}
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-primary rounded-3 px-4">Сохранить</button>
+          <a href="YandexDevices" class="btn btn-outline-secondary rounded-3">Отмена</a>
+        </div>
+      </form>
+
+        <div class="card border border-secondary border-opacity-25 rounded-3 shadow-sm mt-4" id="yd-glagol-root" data-station-id="{{ id }}" data-glagol-url="{{ glagol_url }}">
+          <div class="card-body">
+            <h2 class="h6 fw-semibold mb-3 text-body">Музыка (локальный Glagol)</h2>
+            <p class="text-body-secondary small mb-3">
+              Состояние плеера и обложка приходят с колонки по WebSocket; если колонка молчит, нажмите «Обновить» или включите воспроизведение на устройстве.
+            </p>
+            <div class="row g-3 align-items-start">
+              <div class="col-auto">
+                <div class="rounded-3 overflow-hidden bg-body-secondary border border-secondary border-opacity-25" style="width: 120px; height: 120px; max-width: 30vw;">
+                  <img id="yd-cover" src="" alt="" class="w-100 h-100 object-fit-cover d-none">
+                  <div id="yd-cover-ph" class="d-flex align-items-center justify-content-center text-body-secondary small text-center p-2 h-100">нет обложки</div>
+                </div>
+              </div>
+              <div class="col">
+                <div id="yd-status" class="text-body-secondary small mb-1">загрузка…</div>
+                <div id="yd-title" class="fw-semibold text-body">—</div>
+                <div id="yd-sub" class="text-body-secondary small">—</div>
+                <div id="yd-progress" class="text-body-secondary small mt-1">—</div>
+              </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <button type="button" class="btn btn-outline-primary btn-sm rounded-3" id="yd-refresh">Обновить</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" data-yd-act="play">Играть</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" data-yd-act="pause">Пауза</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" data-yd-act="prev">Назад</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" data-yd-act="next">Вперёд</button>
+            </div>
+            <div class="row g-2 align-items-end mt-3">
+              <div class="col-md-6">
+                <label class="form-label small mb-0 text-body-secondary" for="yd-vol">Громкость (0–1)</label>
+                <div class="input-group input-group-sm">
+                  <input type="number" class="form-control rounded-start-3" id="yd-vol" min="0" max="1" step="0.1" value="0.5">
+                  <button type="button" class="btn btn-outline-secondary rounded-end-3" id="yd-vol-set">Применить</button>
+                </div>
+              </div>
+            </div>
+            <details class="mt-3">
+              <summary class="text-body-secondary small user-select-none">Запуск трека по id (play_music)</summary>
+              <div class="row g-2 mt-2">
+                <div class="col-md-4">
+                  <label class="form-label small text-body-secondary" for="yd-mid">music_id</label>
+                  <input type="text" class="form-control form-control-sm rounded-3" id="yd-mid" placeholder="например 12345">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small text-body-secondary" for="yd-mtype">music_type</label>
+                  <input type="text" class="form-control form-control-sm rounded-3" id="yd-mtype" placeholder="track">
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                  <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" id="yd-play-music">play_music</button>
+                </div>
+              </div>
+            </details>
+            <p id="yd-err" class="text-danger small mt-2 mb-0 d-none" role="alert"></p>
+          </div>
+        </div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var root = document.getElementById('yd-glagol-root');
+    if (!root) return;
+    var base = (root.getAttribute('data-glagol-url') || '').trim();
+    if (!base) {
+      var st0 = document.getElementById('yd-status');
+      if (st0) st0.textContent = 'URL API не найден (маршрут плагина).';
+      return;
+    }
+    function showErr(t) {
+      var el = document.getElementById('yd-err');
+      if (!el) return;
+      if (t) { el.textContent = t; el.classList.remove('d-none'); }
+      else { el.textContent = ''; el.classList.add('d-none'); }
+    }
+    function fmtSec(s) {
+      if (s == null || s === '' || isNaN(Number(s))) return '—';
+      var n = Math.floor(Number(s));
+      var m = Math.floor(n / 60);
+      var sec = n % 60;
+      return m + ':' + (sec < 10 ? '0' : '') + sec;
+    }
+    function setCover(url) {
+      var img = document.getElementById('yd-cover');
+      var ph = document.getElementById('yd-cover-ph');
+      if (!img || !ph) return;
+      if (url) {
+        img.src = url;
+        img.classList.remove('d-none');
+        ph.classList.add('d-none');
+      } else {
+        img.removeAttribute('src');
+        img.classList.add('d-none');
+        ph.classList.remove('d-none');
+      }
+    }
+    function applySnap(j) {
+      showErr('');
+      var st = document.getElementById('yd-status');
+      var title = document.getElementById('yd-title');
+      var sub = document.getElementById('yd-sub');
+      var prog = document.getElementById('yd-progress');
+      if (!j || !j.ok) {
+        if (st) st.textContent = 'нет связи с колонкой';
+        var msg = (j && j.error) || 'нет ответа';
+        if (j && j.detail) msg += ' — ' + j.detail;
+        if (j && j.hint) msg += ' ' + j.hint;
+        showErr(msg);
+        return;
+      }
+      var playing = j.playing;
+      var pl = j.player;
+      if (st) {
+        var bits = [];
+        if (playing === true) bits.push('воспроизведение');
+        else if (playing === false) bits.push('на паузе / тишина');
+        if (j.volume != null) bits.push('громкость ' + j.volume);
+        if (j.alice_state) bits.push('Алиса: ' + j.alice_state);
+        st.textContent = bits.length ? bits.join(' · ') : 'состояние не пришло — обновите позже';
+      }
+      if (pl && (pl.title != null || pl.subtitle != null)) {
+        if (title) title.textContent = pl.title || pl.subtitle || '—';
+        if (sub) sub.textContent = pl.subtitle || pl.type || pl.playlist_type || '—';
+        if (prog) prog.textContent = fmtSec(pl.progress_sec) + ' / ' + fmtSec(pl.duration_sec);
+        setCover(pl.cover_url || '');
+      } else {
+        if (title) title.textContent = '—';
+        if (sub) sub.textContent = 'нет активного трека в кадрах Glagol';
+        if (prog) prog.textContent = '—';
+        setCover('');
+      }
+    }
+    async function loadSnap() {
+      try {
+        var r = await fetch(base, { credentials: 'same-origin' });
+        var ct = (r.headers.get('content-type') || '');
+        if (!ct.includes('application/json')) {
+          showErr('Ответ не JSON (HTTP ' + r.status + '). Войдите в админку или проверьте URL.');
+          return;
+        }
+        var j = await r.json();
+        applySnap(j);
+      } catch (e) {
+        showErr(String(e));
+      }
+    }
+    async function postAct(body) {
+      showErr('');
+      try {
+        var r = await fetch(base, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        var ct = (r.headers.get('content-type') || '');
+        if (!ct.includes('application/json')) {
+          showErr('Ответ не JSON (HTTP ' + r.status + ').');
+          return;
+        }
+        var j = await r.json();
+        if (!j.ok) {
+          var em = (j.response && JSON.stringify(j.response)) || j.error || 'команда не принята';
+          if (j.detail) em += ' — ' + j.detail;
+          if (j.hint) em += ' ' + j.hint;
+          showErr(em);
+        }
+        await loadSnap();
+      } catch (e) {
+        showErr(String(e));
+      }
+    }
+    document.getElementById('yd-refresh') && document.getElementById('yd-refresh').addEventListener('click', loadSnap);
+    root.querySelectorAll('[data-yd-act]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        postAct({ action: btn.getAttribute('data-yd-act') });
+      });
+    });
+    var vs = document.getElementById('yd-vol-set');
+    if (vs) vs.addEventListener('click', function () {
+      var v = document.getElementById('yd-vol');
+      var val = v && v.value !== '' ? parseFloat(v.value) : NaN;
+      if (isNaN(val)) return;
+      postAct({ action: 'volume', volume: val });
+    });
+    var pm = document.getElementById('yd-play-music');
+    if (pm) pm.addEventListener('click', function () {
+      var mid = document.getElementById('yd-mid');
+      var mt = document.getElementById('yd-mtype');
+      postAct({ action: 'play_music', music_id: mid && mid.value, music_type: mt && mt.value });
+    });
+    loadSnap();
+  })();
+  </script>
 {% endblock %}

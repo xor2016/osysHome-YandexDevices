@@ -15,6 +15,7 @@ from app.database import session_scope, row2dict, get_now_to_utc
 from plugins.YandexDevices.QuazarApi import QuazarApi
 from time import sleep
 from sqlalchemy import and_, select, distinct
+from typing import Optional
 
 class YandexDevices(BasePlugin):
 
@@ -30,8 +31,15 @@ class YandexDevices(BasePlugin):
     def initialization(self):
         cache_dir = os.path.join(getCacheDir(), self.name)
         os.makedirs(cache_dir, exist_ok=True)
-        self.quazar = QuazarApi(cache_dir, self.logger)
-        pass
+        self.quazar = QuazarApi(cache_dir, self.logger, user_notify=self._quazar_user_notify)
+
+    def _quazar_user_notify(self, title: str, description: str = "", level: str = "warning"):
+        """Уведомление в интерфейсе (лентa уведомлений) при проблемах с Яндексом."""
+        from app.core.lib.common import addNotify
+        from app.core.lib.constants import CategoryNotify
+
+        cat = CategoryNotify.Error if level == "error" else CategoryNotify.Warning
+        addNotify(title, description, cat, source=self.name)
 
     def admin(self, request):
         op = request.args.get('op', '')
@@ -128,6 +136,8 @@ class YandexDevices(BasePlugin):
         return self.render('yandexdevices_stations.html', content)
 
     def route_index(self):
+        _admin = self.name.split(".")[-1]
+
         @self.blueprint.route('/YandexDevices/device', methods=['POST'])
         @self.blueprint.route('/YandexDevices/device/<device_id>', methods=['GET', 'POST'])
         @handle_admin_required
@@ -168,6 +178,106 @@ class YandexDevices(BasePlugin):
                     session.commit()
 
                     return 'Device updated successfully', 200
+
+        @self.blueprint.route(
+            "/admin/" + _admin + "/station/<int:station_id>/glagol",
+            methods=["GET", "POST"],
+        )
+        @handle_admin_required
+        def yandexdevices_station_glagol(station_id: int):
+            from plugins.YandexDevices.glagol_local import (
+                glagol_player_command,
+                glagol_snapshot,
+                parse_host_port,
+            )
+
+            with session_scope() as session:
+                st = session.query(YaStation).filter(YaStation.id == station_id).one_or_none()
+                if not st:
+                    return jsonify({"ok": False, "error": "station not found"}), 404
+                station_ip = st.ip or ""
+                station_iot_id = st.iot_id
+                station_platform = st.platform
+                station_device_token = st.device_token
+                station_db_id = int(st.id)
+
+            host, port = parse_host_port(station_ip)
+            if not host:
+                return jsonify({"ok": False, "error": "no IP"}), 400
+
+            token = self._ensure_device_token(
+                station_db_id,
+                station_iot_id,
+                station_platform,
+                station_device_token,
+            )
+            if not token:
+                return jsonify({"ok": False, "error": "no device token"}), 400
+
+            if request.method == "GET":
+                snap, conn_detail = glagol_snapshot(host, port, token, self.logger)
+                if snap is None:
+                    hint = ""
+                    dlow = (conn_detail or "").lower()
+                    if "10061" in (conn_detail or "") or "отверг" in (conn_detail or "") or "refused" in dlow:
+                        hint = (
+                            "На TCP-порту 1961 колонка не отвечает: проверьте IP в LAN, "
+                            "что сервер и колонка в одной сети (без изоляции клиентов Wi‑Fi), "
+                            "в приложении Яндекс разрешено локальное управление, брандмауэр."
+                        )
+                    return (
+                        jsonify(
+                            {
+                                "ok": False,
+                                "error": "glagol connection failed",
+                                "detail": conn_detail,
+                                "hint": hint or None,
+                            }
+                        ),
+                        502,
+                    )
+                return jsonify({"ok": True, **snap})
+
+            body = request.get_json(silent=True) or {}
+            action = (body.get("action") or "").strip()
+            kw: dict = {}
+            if "volume" in body and body.get("volume") is not None:
+                kw["volume"] = float(body["volume"])
+            if "position" in body and body.get("position") is not None:
+                kw["position"] = float(body["position"])
+            if body.get("repeat_mode") is not None:
+                kw["repeat_mode"] = body.get("repeat_mode")
+            if "shuffle" in body:
+                kw["shuffle"] = bool(body.get("shuffle"))
+            if body.get("music_id") is not None:
+                kw["music_id"] = body.get("music_id")
+            if body.get("music_type") is not None:
+                kw["music_type"] = body.get("music_type")
+
+            resp, cmd_err = glagol_player_command(host, port, token, self.logger, action, **kw)
+            if not resp:
+                hint = ""
+                d = cmd_err or ""
+                dlow = d.lower()
+                if "10061" in d or "отверг" in d or "refused" in dlow:
+                    hint = (
+                        "На TCP-порту 1961 колонка не отвечает: проверьте IP в LAN, "
+                        "что сервер и колонка в одной сети (без изоляции клиентов Wi‑Fi), "
+                        "в приложении Яндекс разрешено локальное управление, брандмауэр."
+                    )
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": "no response",
+                            "detail": cmd_err,
+                            "hint": hint or None,
+                        }
+                    ),
+                    502,
+                )
+            ok = resp.get("status") == "ok"
+            return jsonify({"ok": ok, "response": resp}), (200 if ok else 400)
 
     def cyclic_task(self):
         # self.refresh_stations()
@@ -615,8 +725,79 @@ class YandexDevices(BasePlugin):
         result = self.quazar.api_request('https://iot.quasar.yandex.ru/m/user/devices/' + device.iot_id + '/actions', 'POST', payload)
         self.logger.debug(result)
 
-    def send_command_to_station(self, station, command):
-        pass
+    def _sanitize_tts_text(self, message: str, max_len: int) -> str:
+        message = message.replace('(', ' ').replace(')', ' ')
+        message = re.sub(r'<.+?>', '', message)
+        message = ' '.join(message.split())
+        if len(message) > max_len:
+            message = message[: max_len - 1]
+        return message
+
+    def _ensure_device_token(
+        self,
+        station_id: int,
+        iot_id: Optional[str],
+        platform: Optional[str],
+        existing_token: Optional[str],
+    ) -> Optional[str]:
+        """Возвращает ``device_token`` по данным строки БД; при отсутствии — запрос к Quasar и запись в БД."""
+        token = existing_token
+        if not token and iot_id and platform:
+            token = self.quazar.get_device_token(iot_id, platform)
+            if token:
+                try:
+                    with session_scope() as session:
+                        st = session.query(YaStation).filter(YaStation.id == station_id).one_or_none()
+                        if st:
+                            st.device_token = token
+                            session.commit()
+                except Exception as ex:
+                    self.logger.warning("Glagol: не удалось сохранить device_token в БД — %s", ex)
+        return token
+
+    def _ensure_station_device_token(self, station: YaStation) -> Optional[str]:
+        """Возвращает ``device_token``, при необходимости запрашивает через Quasar и сохраняет в БД."""
+        try:
+            sid = int(station.id)
+        except (TypeError, ValueError):
+            return None
+        return self._ensure_device_token(
+            sid,
+            station.iot_id,
+            station.platform,
+            station.device_token,
+        )
+
+    def send_command_to_station(self, station: YaStation, command: str):
+        """Локальный TTS/команда по WebSocket Glagol (нужны IP, platform, iot_id, device_token)."""
+        from plugins.YandexDevices.glagol_local import glagol_send_text, parse_host_port
+
+        text = self._sanitize_tts_text(command or '', 2000)
+        if not text.strip():
+            self.logger.warning("Local TTS: пустая фраза для станции %s", getattr(station, "title", "?"))
+            return False
+
+        host, port = parse_host_port(station.ip or "")
+        if not host:
+            self.logger.warning(
+                "Local TTS: у станции «%s» не задан IP. Укажите LAN-адрес колонки в карточке станции.",
+                station.title,
+            )
+            return False
+
+        token = self._ensure_station_device_token(station)
+
+        if not token:
+            self.logger.warning(
+                "Local TTS: нет токена устройства для «%s». Нажмите «Сформировать токен» в редактировании станции.",
+                station.title,
+            )
+            return False
+
+        ok = glagol_send_text(host, port, token, text, self.logger)
+        if not ok:
+            self.logger.warning("Local TTS: отправка не удалась (%s:%s), станция «%s»", host, port, station.title)
+        return ok
 
     def send_command_to_stationCloud(self, station, command):
         with session_scope() as session:
@@ -626,13 +807,7 @@ class YandexDevices(BasePlugin):
 
     def send_cloud_TTS(self, station: YaStation, message: str, action='phrase_action'):
 
-        # Cleaning up the phrase as per the PHP code logic
-        message = message.replace('(', ' ').replace(')', ' ')
-        message = re.sub(r'<.+?>', '', message)  # Removing HTML tags
-        message = ' '.join(message.split())  # Replacing multiple spaces with a single space
-
-        if len(message) >= 100:
-            message = message[:99]
+        message = self._sanitize_tts_text(message or '', 99)
 
         # Debug logging if error monitoring is enabled
         self.logger.info(f"Sending cloud '{action}: {message}' to {station.title}")
