@@ -13,12 +13,13 @@
 </div>
 {% else %}
 <div class="table-responsive mx-n1">
-  <table class="table table-hover table-sm align-middle mb-0 border-secondary border-opacity-25">
+  <table id="yd-dt-stations" class="table table-hover table-sm align-middle mb-0 border-secondary border-opacity-25" data-yd-datatable data-yd-lan-poll="{{ glagol_ws_status_url|e }}">
     <thead class="border-bottom border-secondary border-opacity-50">
       <tr>
         <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Станция</th>
         <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Min level say</th>
-        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Статус</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap text-end bg-transparent border-0">Статус</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap text-end bg-transparent border-0">LAN Glagol</th>
         <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Обновлено</th>
         <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap text-end bg-transparent border-0">Действия</th>
       </tr>
@@ -32,15 +33,23 @@
             <a class="link-body-emphasis link-underline link-underline-opacity-0 link-underline-opacity-75-hover fw-semibold" href="?op=edit&station={{ station.id }}">{{ station.title }}</a>
           </div>
         </td>
-        <td class="text-body-secondary">{{ station.min_level }}</td>
-        <td>
+        <td class="text-body-secondary" data-order="{{ station.min_level|float(0) }}">{{ station.min_level }}</td>
+        <td class="text-end" data-order="{{ station.online|int }}">
           {% if station.online %}
           <span class="badge rounded-pill text-bg-success">Online</span>
           {% else %}
           <span class="badge rounded-pill text-bg-danger">Offline</span>
           {% endif %}
         </td>
-        <td class="text-body-secondary small" id="dev{{ station.id }}_updated">{{ station.updated }}</td>
+        <td class="text-end" data-yd-lan-cell="{{ station.id }}">
+          {% set gl = glagol_lan_by_id.get(station.id) if glagol_lan_by_id else none %}
+          {% if gl %}
+          <span class="badge rounded-pill {% if gl.phase == 'connected' %}text-bg-success{% elif gl.phase in ('error', 'stopped') %}text-bg-danger{% elif gl.phase in ('idle', 'off') %}text-bg-secondary{% else %}text-bg-warning text-dark{% endif %}">{{ gl.phase }}</span>
+          {% else %}
+          <span class="badge rounded-pill text-bg-secondary">—</span>
+          {% endif %}
+        </td>
+        <td class="text-body-secondary small" id="dev{{ station.id }}_updated" data-order="{{ station.updated.timestamp() if station.updated else 0 }}">{{ station.updated }}</td>
         <td class="text-end text-nowrap">
           <div class="btn-group btn-group-sm" role="group" aria-label="Действия">
             <a href="?op=edit&station={{ station.id }}" class="btn btn-outline-primary rounded-start-3" title="Изменить"><i class="feather icon-edit-2"></i></a>
@@ -52,5 +61,63 @@
     </tbody>
   </table>
 </div>
+<script>
+(function () {
+  var tbl = document.getElementById('yd-dt-stations');
+  if (!tbl) return;
+  var url = (tbl.getAttribute('data-yd-lan-poll') || '').trim();
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+  function badgeClass(phase) {
+    if (phase === 'connected') return 'text-bg-success';
+    if (phase === 'error' || phase === 'stopped') return 'text-bg-danger';
+    if (phase === 'idle' || phase === 'off') return 'text-bg-secondary';
+    return 'text-bg-warning text-dark';
+  }
+  function render(st) {
+    if (!st) return '<span class="badge rounded-pill text-bg-secondary">—</span>';
+    var ph = esc(st.phase);
+    return '<span class="badge rounded-pill ' + badgeClass(st.phase) + '">' + ph + '</span>';
+  }
+  function applyCell(stationId, st) {
+    var cell = tbl.querySelector('[data-yd-lan-cell="' + stationId + '"]');
+    if (cell) cell.innerHTML = render(st);
+  }
+  function onYandexDevicesWs(payload) {
+    if (!payload || payload.operation !== 'glagol_ws_status' || !payload.data) return;
+    var d = payload.data;
+    if (d.station_id == null) return;
+    applyCell(String(d.station_id), d);
+  }
+  async function pollFallback() {
+    if (!url || (typeof socket !== 'undefined' && socket.connected)) return;
+    try {
+      var r = await fetch(url, { credentials: 'same-origin' });
+      if (!r.ok) return;
+      var j = await r.json();
+      tbl.querySelectorAll('[data-yd-lan-cell]').forEach(function (cell) {
+        var id = cell.getAttribute('data-yd-lan-cell');
+        applyCell(id, j[id] || j[String(id)]);
+      });
+    } catch (e) { /* ignore */ }
+  }
+  var wsBound = false;
+  function bindYdWs() {
+    if (wsBound || typeof socket === 'undefined') return;
+    wsBound = true;
+    socket.emit('subscribeData', ['YandexDevices']);
+    socket.on('YandexDevices', onYandexDevicesWs);
+  }
+  bindYdWs();
+  document.addEventListener('DOMContentLoaded', bindYdWs);
+  if (typeof socket === 'undefined') {
+    setInterval(pollFallback, 30000);
+    pollFallback();
+  }
+})();
+</script>
 {% endif %}
 {% endblock %}

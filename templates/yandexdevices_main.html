@@ -1,4 +1,36 @@
 {% extends "layouts/module_admin.html" %}
+{% block stylesheets %}
+<link rel="stylesheet" href="{{ config.ASSETS_ROOT }}/plugins/datatables/css/dataTables.bootstrap5.min.css">
+<style>
+  .yd-dt-custom-toolbar {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+  .yd-dt-custom-toolbar .yd-dt-custom-search-input {
+    flex: 1 1 auto;
+    min-width: 8rem;
+    max-width: 28rem;
+  }
+  .yd-dt-custom-toolbar .yd-dt-reset {
+    flex-shrink: 0;
+  }
+  @media (max-width: 575.98px) {
+    .yd-dt-custom-toolbar {
+      flex-wrap: wrap;
+    }
+    .yd-dt-custom-toolbar .yd-dt-custom-search-input {
+      max-width: none;
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
 {% block breadcrumb %}
 <li class="breadcrumb-item"><a href="YandexDevices">Yandex Devices</a></li>
 {% endblock %}
@@ -84,5 +116,118 @@
     </div>
   </div>
 </div>
+
+<script src="{{ config.ASSETS_ROOT }}/plugins/datatables/js/dataTables.min.js"></script>
+<script src="{{ config.ASSETS_ROOT }}/plugins/datatables/js/dataTables.bootstrap5.min.js"></script>
+<script>
+(function () {
+  var LS_PREFIX = "YandexDevices.DataTables.";
+
+  function initYdDataTables() {
+    if (typeof jQuery === "undefined" || !jQuery.fn.dataTable) return;
+    jQuery("table[data-yd-datatable]").each(function () {
+      var el = this;
+      var $el = jQuery(el);
+      if (jQuery.fn.dataTable.isDataTable(el)) return;
+
+      var tableId = el.id || "yd-dt-anon";
+      var storageKey = LS_PREFIX + tableId;
+
+      var $responsive = $el.closest(".table-responsive");
+      if (!$responsive.length) {
+        $responsive = $el.parent();
+      }
+      if (!$responsive.children(".yd-dt-custom-toolbar").length) {
+        var inputId = "yd-dt-search-" + tableId.replace(/[^a-zA-Z0-9_-]/g, "_");
+        $responsive.prepend(
+          '<div class="yd-dt-custom-toolbar">' +
+            '<label for="' +
+            inputId +
+            '" class="small text-body-secondary mb-0 flex-shrink-0 align-self-center">Поиск:</label>' +
+            '<input type="search" id="' +
+            inputId +
+            '" class="form-control form-control-sm yd-dt-custom-search-input" autocomplete="off" placeholder="Поиск по всем колонкам таблицы…">' +
+            '<button type="button" class="btn btn-outline-secondary btn-sm rounded-3 yd-dt-reset">Сбросить</button>' +
+            "</div>"
+        );
+      }
+      var $toolbar = $responsive.children(".yd-dt-custom-toolbar").first();
+      var $customSearch = $toolbar.find(".yd-dt-custom-search-input");
+      var $customReset = $toolbar.find(".yd-dt-reset");
+
+      $el.DataTable({
+        paging: false,
+        searching: true,
+        searchDelay: 0,
+        info: false,
+        ordering: true,
+        autoWidth: false,
+        stateSave: true,
+        stateDuration: 0,
+        stateSaveCallback: function (settings, data) {
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(data));
+          } catch (e) {}
+        },
+        stateLoadCallback: function () {
+          try {
+            var raw = localStorage.getItem(storageKey);
+            if (!raw) return null;
+            var d = JSON.parse(raw);
+            if (!d || typeof d !== "object") return null;
+            return d;
+          } catch (e) {
+            return null;
+          }
+        },
+        layout: {
+          topStart: null,
+          topEnd: null,
+          bottomStart: null,
+          bottomEnd: null
+        },
+        language: {
+          zeroRecords: "Нет строк по текущему поиску",
+          emptyTable: "Нет данных"
+        },
+        columnDefs: [{ orderable: false, searchable: false, targets: -1 }],
+        initComplete: function () {
+          var api = this.api();
+
+          function syncInputFromApi() {
+            var t = api.search();
+            if (typeof t !== "string") t = t ? String(t) : "";
+            if ($customSearch.val() !== t) $customSearch.val(t);
+          }
+
+          syncInputFromApi();
+
+          $customSearch.on("input keyup", function () {
+            clearTimeout(el._ydSearchDebounce);
+            el._ydSearchDebounce = setTimeout(function () {
+              api.search($customSearch.val()).draw();
+            }, 300);
+          });
+
+          $customReset.on("click", function () {
+            try {
+              localStorage.removeItem(storageKey);
+            } catch (e) {}
+            $customSearch.val("");
+            api.search("").columns().search("");
+            api.order([[0, "asc"]]);
+            api.draw(false);
+          });
+        }
+      });
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initYdDataTables);
+  } else {
+    initYdDataTables();
+  }
+})();
+</script>
 
 {% endblock %}

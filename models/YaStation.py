@@ -15,6 +15,8 @@ class YaStation(SurrogatePK, db.Model):
     online = Column(db.Integer())
     tts_scenario = Column(db.String(100))
     tts = Column(db.Integer())
-    updated = Column(db.DateTime) 
+    updated = Column(db.DateTime())
+    # Публикация полей Glagol (LAN) в объект osysHome: только имя объекта; свойства фиксированные в коде
+    glagol_linked_object = Column(db.String(255))
 
 

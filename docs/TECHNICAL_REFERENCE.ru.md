@@ -14,6 +14,9 @@
 | `plugins/YandexDevices/forms/SettingForms.py` | Форма глобальных настроек модуля |
 | `plugins/YandexDevices/forms/StationForm.py` | Форма редактирования станции |
 | `plugins/YandexDevices/templates/*` | Админ-страницы и виджет |
+| `plugins/YandexDevices/glagol_local.py` | Формат Glagol, `glagol_send_text`, `glagol_player_command`, снимок |
+| `plugins/YandexDevices/glagol_keepalive.py` | `GlagolWsRegistry`, фоновые потоки, публикация в объект, push в UI |
+| `plugins/YandexDevices/docs/Commands.md` | API `glagol_command` для методов объектов |
 
 ---
 
@@ -55,6 +58,7 @@ flowchart LR
 | `online` | integer | Признак online |
 | `tts_scenario` | string | ID сценария для cloud TTS |
 | `tts` | integer | Режим TTS (`0/1/2`) |
+| `glagol_linked_object` | string | Имя объекта osysHome для публикации снимка Glagol |
 | `updated` | datetime | Время обновления |
 
 ### `YaDevices` (`yadevices`)
@@ -109,8 +113,12 @@ flowchart LR
 
 - `GET /YandexDevices/device/<device_id>` - JSON устройства и его capabilities.
 - `POST /YandexDevices/device` и `/YandexDevices/device/<device_id>` - сохранение привязок и настроек.
+- `GET|POST /admin/<плагин>/station/<station_id>/glagol` - снимок и команды плеера (LAN).
+- `GET /admin/<плагин>/glagol_ws_status` - JSON-статус фоновых worker'ов Glagol.
 
-Оба маршрута требуют прав администратора.
+Маршруты устройств требуют прав администратора. Glagol для станции регистрируется в `route_index()` с префиксом админ-blueprint.
+
+Метод плагина **`glagol_command(**kwargs)`** вызывается через `callPluginFunction("YandexDevices", "glagol_command", {...})` (возвращаемое значение передаётся вызывающему). Поиск станции: `station_id`, `object` (совпадает с `glagol_linked_object`) или `station` / `station_title`. См. [Commands.md](Commands.md).
 
 > [!WARNING]
 > Во frontend есть вызов `/YandexDevices/delete_prop/<id>`, но в текущем backend-коде этот маршрут не реализован.
@@ -281,15 +289,37 @@ https://iot.quasar.yandex.ru/m/user/devices
 
 - `text_action`
 
+Локальный режим (`tts=1`) вызывает `send_command_to_station()` → `glagol_send_text()` по LAN (нужны `ip`, `platform`, `iot_id`, `device_token`).
+
+---
+
+## LAN Glagol keepalive
+
+При старте плагина `GlagolWsRegistry` синхронизирует worker'ы для станций с **IP** и **device_token**.
+
+Каждый `GlagolStationWorker`:
+
+- держит долгоживущий WebSocket к колонке (порт **1961**);
+- при `glagol_linked_object` вызывает `publish_glagol_snap_to_object()` (основные поля: `state`, `volume`, `muted`, `alice_state`, `media_*`);
+- шлёт в админку через `plugin.sendDataToWebsocket`: `glagol_snapshot`, `glagol_ws_status` (статус с троттлингом по RX/TX).
+
+Низкий уровень и разовые команды: `glagol_local.py`. Реестр: `glagol_keepalive.py`.
+
+`glagol_send_text`: при таймауте ACK возможен `ok: true` с `detail`, если кадр отправлен (см. [Commands.md](Commands.md)).
+
 ---
 
 ## WebSocket
 
-Модуль отправляет:
+Через `sendDataToWebsocket` (Socket.IO):
 
-- `operation: "updateDevice"` с обновленной записью устройства.
+| operation | Назначение |
+| --- | --- |
+| `updateDevice` | Строка устройства (`yandexdevices_devices.html`) |
+| `glagol_snapshot` | Плеер / медиа на странице станции |
+| `glagol_ws_status` | Фаза worker'а, счётчики RX/TX |
 
-Frontend в `yandexdevices_devices.html` подписывается на `YandexDevices` и обновляет колонку `Updated` без перезагрузки страницы.
+Подписка: `subscribeData` → `YandexDevices`. На странице станции HTTP-опрос — только запасной вариант без сокета.
 
 ---
 
@@ -299,20 +329,21 @@ Frontend в `yandexdevices_devices.html` подписывается на `Yandex
 
 - `requests`
 - `certifi`
+- `websocket-client` (Glagol LAN)
 - Flask / WTForms / SQLAlchemy (из core-платформы)
 
 ---
 
 ## Известные нюансы
 
-- `send_command_to_station()` пока пустой (`pass`), локальный path команд не реализован.
-- В форме станции явно указано `Local (not work)`, что подтверждает незавершенный локальный TTS-режим.
 - `delProp` во frontend вызывает отсутствующий backend-маршрут.
 - `update_period` читается в форме настроек, но при POST сейчас сохраняются только `get_device_data` и `update_linked`.
+- Обратное управление через `setDataDevice` по-прежнему использует `instance: "on"` для всех типов capability (см. раздел про привязки).
 
 ---
 
 ## См. также
 
+- [Команды Glagol (Commands.md)](Commands.md)
 - [Руководство пользователя](USER_GUIDE.ru.md)
 - [Индекс модуля](index.ru.md)

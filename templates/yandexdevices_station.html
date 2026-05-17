@@ -1,4 +1,5 @@
 {% extends "layouts/module_admin.html" %}
+{% from 'macros/select.html' import render_linked_select %}
 {% block breadcrumb %}
 <li class="breadcrumb-item"><a href="YandexDevices">Yandex Devices</a></li>
 <li class="breadcrumb-item active" aria-current="page">{{ form.title.data }}</li>
@@ -16,61 +17,124 @@
   </div>
   {% endif %}
 
-  <div class="card shadow-sm rounded-3 bg-body border border-secondary border-opacity-25">
-    <div class="card-body p-4 p-md-5">
-      <h1 class="h5 fw-semibold mb-1 text-body">Редактирование станции</h1>
-      <p class="text-body-secondary small mb-4">Параметры колонки и локального доступа</p>
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h5 fw-semibold mb-1 text-body">{{ form.title.data or 'Станция' }}</h1>
+      <p class="text-body-secondary small mb-0">Настройки колонки, LAN Glagol и управление воспроизведением</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="YandexDevices" class="btn btn-outline-secondary btn-sm rounded-3">К списку</a>
+    </div>
+  </div>
 
+  <div class="row g-4">
+    {# ——— Настройки (форма) ——— #}
+    <div class="col-lg-7">
       <form method="POST">
         {{ form.hidden_tag() }}
-        <div class="row g-3">
-          <div class="col-md-6">
-            {{ form.title.label(class="form-label") }}
-            {{ form.title(class="form-control rounded-3") }}
+
+        <div class="card border border-secondary border-opacity-25 rounded-3 shadow-sm mb-4">
+          <div class="card-header bg-body border-secondary border-opacity-25 py-3">
+            <h2 class="h6 fw-semibold mb-0 text-body">
+              <i class="feather icon-speaker me-2 text-body-secondary" aria-hidden="true"></i>Основное
+            </h2>
           </div>
-          <div class="col-md-6">
-            {{ form.platform.label(class="form-label") }}
-            {{ form.platform(class="form-control rounded-3") }}
-          </div>
-          <div class="col-md-6">
-            {{ form.iot_id.label(class="form-label") }}
-            {{ form.iot_id(class="form-control rounded-3 font-monospace") }}
-          </div>
-          <div class="col-md-6">
-            {{ form.ip.label(class="form-label") }}
-            {{ form.ip(class="form-control rounded-3", placeholder="192.168.1.5 или 192.168.1.5:1961") }}
-            <div class="form-text">Для TTS «Local (Glagol / LAN)»: IP колонки в вашей сети; порт по умолчанию 1961 (можно задать как <code>IP:порт</code>).</div>
+          <div class="card-body p-4">
+            <p class="text-body-secondary small mb-3">Идентификация колонки в облаке Яндекса.</p>
+            <div class="row g-3">
+              <div class="col-md-6">
+                {{ form.title.label(class="form-label") }}
+                {{ form.title(class="form-control rounded-3") }}
+              </div>
+              <div class="col-md-6">
+                {{ form.platform.label(class="form-label") }}
+                {{ form.platform(class="form-control rounded-3") }}
+              </div>
+              <div class="col-12">
+                {{ form.iot_id.label(class="form-label") }}
+                {{ form.iot_id(class="form-control rounded-3 font-monospace") }}
+              </div>
+            </div>
           </div>
         </div>
 
-        <hr class="my-4 border-secondary-subtle">
-
-        <div class="mb-4">
-          {% if form.device_token.data %}
-            {{ form.device_token.label(class="form-label") }}
-            {{ form.device_token(class="form-control rounded-3 font-monospace bg-body-secondary") }}
-          {% else %}
-            <div class="alert alert-info border-0 rounded-3 small mb-0" role="status">
-              <p class="mb-2 fw-semibold">Токен локального управления</p>
-              <p class="mb-3">Сформируйте токен для локального управления колонкой.</p>
+        <div class="card border border-secondary border-opacity-25 rounded-3 shadow-sm mb-4">
+          <div class="card-header bg-body border-secondary border-opacity-25 py-3">
+            <h2 class="h6 fw-semibold mb-0 text-body">
+              <i class="feather icon-wifi me-2 text-body-secondary" aria-hidden="true"></i>Локальная сеть (Glagol)
+            </h2>
+          </div>
+          <div class="card-body p-4">
+            <p class="text-body-secondary small mb-3">
+              IP и токен устройства нужны для фонового WebSocket к колонке (порт 1961). Состояние потока — в блоке справа.
+            </p>
+            <div class="mb-4">
+              {{ form.ip.label(class="form-label") }}
+              {{ form.ip(class="form-control rounded-3", placeholder="192.168.1.5 или 192.168.1.5:1961") }}
+              <div class="form-text">Порт по умолчанию 1961; можно указать как <code>IP:порт</code>.</div>
+            </div>
+            {% if form.device_token.data %}
+            <div class="mb-4">
+              {{ form.device_token.label(class="form-label") }}
+              {{ form.device_token(class="form-control rounded-3 font-monospace bg-body-secondary", readonly=true) }}
+              {% if glagol_token_exp_hint %}
+              <div class="form-text {% if glagol_token_expired %}text-warning{% endif %}">
+                Срок JWT (UTC): {{ glagol_token_exp_hint }}{% if glagol_token_expired %} — истёк{% endif %}
+              </div>
+              {% endif %}
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                <a href="YandexDevices?op=generate_dev_token&amp;id={{ id }}" class="btn btn-outline-primary btn-sm rounded-3">Обновить токен</a>
+              </div>
+              <p class="form-text mb-0">Новый токен с Яндекса (нужна авторизация в плагине). При истечении срока keepalive обновляет токен сам.</p>
+            </div>
+            {% else %}
+            <div class="alert alert-info border-0 rounded-3 small mb-4" role="status">
+              <p class="fw-semibold mb-1">Токен локального управления</p>
+              <p class="mb-3">Сформируйте токен, чтобы плагин мог подключаться к колонке по LAN.</p>
               <a href="?op=generate_dev_token&id={{ id }}" class="btn btn-primary btn-sm rounded-3">Сформировать токен</a>
             </div>
-          {% endif %}
-        </div>
+            {% endif %}
 
-        <div class="mb-3">
-          {{ form.tts.label(class="form-label d-block mb-2") }}
-          {% for choice in form.tts %}
-          <div class="form-check">
-            {{ choice(class="form-check-input") }}
-            <label class="form-check-label" for="{{ choice.id }}">{{ choice.label }}</label>
+            <hr class="border-secondary-subtle my-4">
+
+            <h3 class="h6 fw-semibold text-body mb-2">Публикация в объект osysHome</h3>
+            <p class="text-body-secondary small mb-3">
+              Имя объекта, в свойства которого пишется снимок Glagol через <code>updateProperty</code>.
+            </p>
+            {{ render_linked_select(form.glagol_linked_object, none, none) }}
+            <details class="mt-3">
+              <summary class="text-body-secondary small user-select-none">Список свойств объекта</summary>
+              <p class="form-text mt-2 mb-0">
+                Сейчас пишутся: <code>state</code>, <code>volume</code>, <code>muted</code>, <code>alice_state</code>,
+                <code>media_title</code>, <code>media_subtitle</code>, <code>media_duration</code>, <code>media_progress</code>, <code>media_cover_url</code>.
+                Id трека для <code>play_music</code> в объект не пишутся — смотрите снимок плеера справа (<code>player.id</code> / <code>player.type</code> в JSON при «Обновить»).
+              </p>
+            </details>
           </div>
-          {% endfor %}
         </div>
 
-        <div class="mb-4">
-          {{ form.min_level.label(class="form-label") }}
-          {{ form.min_level(class="form-control rounded-3") }}
+        <div class="card border border-secondary border-opacity-25 rounded-3 shadow-sm mb-4">
+          <div class="card-header bg-body border-secondary border-opacity-25 py-3">
+            <h2 class="h6 fw-semibold mb-0 text-body">
+              <i class="feather icon-mic me-2 text-body-secondary" aria-hidden="true"></i>Озвучивание (TTS)
+            </h2>
+          </div>
+          <div class="card-body p-4">
+            <p class="text-body-secondary small mb-3">Режим синтеза речи и минимальный уровень громкости для команды «сказать».</p>
+            <div class="mb-3">
+              {{ form.tts.label(class="form-label d-block mb-2") }}
+              {% for choice in form.tts %}
+              <div class="form-check">
+                {{ choice(class="form-check-input") }}
+                <label class="form-check-label" for="{{ choice.id }}">{{ choice.label }}</label>
+              </div>
+              {% endfor %}
+            </div>
+            <div class="mb-0">
+              {{ form.min_level.label(class="form-label") }}
+              {{ form.min_level(class="form-control rounded-3") }}
+            </div>
+          </div>
         </div>
 
         <div class="d-flex flex-wrap gap-2">
@@ -78,64 +142,110 @@
           <a href="YandexDevices" class="btn btn-outline-secondary rounded-3">Отмена</a>
         </div>
       </form>
+    </div>
 
-        <div class="card border border-secondary border-opacity-25 rounded-3 shadow-sm mt-4" id="yd-glagol-root" data-station-id="{{ id }}" data-glagol-url="{{ glagol_url }}">
-          <div class="card-body">
-            <h2 class="h6 fw-semibold mb-3 text-body">Музыка (локальный Glagol)</h2>
-            <p class="text-body-secondary small mb-3">
-              Состояние плеера и обложка приходят с колонки по WebSocket; если колонка молчит, нажмите «Обновить» или включите воспроизведение на устройстве.
-            </p>
-            <div class="row g-3 align-items-start">
-              <div class="col-auto">
-                <div class="rounded-3 overflow-hidden bg-body-secondary border border-secondary border-opacity-25" style="width: 120px; height: 120px; max-width: 30vw;">
-                  <img id="yd-cover" src="" alt="" class="w-100 h-100 object-fit-cover d-none">
-                  <div id="yd-cover-ph" class="d-flex align-items-center justify-content-center text-body-secondary small text-center p-2 h-100">нет обложки</div>
-                </div>
-              </div>
-              <div class="col">
-                <div id="yd-status" class="text-body-secondary small mb-1">загрузка…</div>
-                <div id="yd-title" class="fw-semibold text-body">—</div>
-                <div id="yd-sub" class="text-body-secondary small">—</div>
-                <div id="yd-progress" class="text-body-secondary small mt-1">—</div>
+    {# ——— Мониторинг и управление ——— #}
+    <div class="col-lg-5">
+      <div class="card border border-secondary border-opacity-25 rounded-3 shadow-sm mb-4" id="yd-lan-status-root" data-station-id="{{ id }}" data-status-url="{{ glagol_ws_status_url|e }}">
+        <div class="card-header bg-body border-secondary border-opacity-25 py-3">
+          <h2 class="h6 fw-semibold mb-0 text-body">
+            <i class="feather icon-activity me-2 text-body-secondary" aria-hidden="true"></i>Подключение Glagol
+          </h2>
+        </div>
+        <div class="card-body p-4">
+          <p class="text-body-secondary small mb-3">
+            Фоновый WebSocket к колонке. Обновление через Socket.IO (фаза, RX/TX).
+          </p>
+          <div class="border rounded-3 p-3 bg-body-secondary bg-opacity-25 small">
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
+              <span class="fw-semibold text-body">Статус потока</span>
+              <span class="badge rounded-pill {% if glagol_ws_status.phase == 'connected' %}text-bg-success{% elif glagol_ws_status.phase in ('error', 'stopped') %}text-bg-danger{% elif glagol_ws_status.phase in ('idle', 'off') %}text-bg-secondary{% else %}text-bg-warning text-dark{% endif %}" id="yd-lan-phase">{{ glagol_ws_status.phase }}</span>
+            </div>
+            <div class="text-body" id="yd-lan-text">{{ glagol_ws_status.text }}</div>
+            <div class="text-body-secondary mt-1 font-monospace {% if not glagol_ws_status.detail %}d-none{% endif %}" id="yd-lan-detail">{{ glagol_ws_status.detail or '' }}</div>
+            <div class="text-body-secondary mt-2 font-monospace" id="yd-lan-counters">RX: {{ glagol_ws_status.frames_rx }} · TX: {{ glagol_ws_status.frames_tx }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border border-secondary border-opacity-25 rounded-3 shadow-sm" id="yd-glagol-root" data-station-id="{{ id }}" data-glagol-url="{{ glagol_url }}">
+        <div class="card-header bg-body border-secondary border-opacity-25 py-3">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h2 class="h6 fw-semibold mb-0 text-body">
+              <i class="feather icon-music me-2 text-body-secondary" aria-hidden="true"></i>Плеер
+            </h2>
+            <span id="yd-live-badge" class="badge rounded-pill text-bg-secondary ms-auto">ожидание</span>
+          </div>
+        </div>
+        <div class="card-body p-4">
+          <p class="text-body-secondary small mb-3">
+            Текущий трек и управление по LAN. Данные приходят push-событиями; «Обновить» — разовый опрос.
+          </p>
+
+          <div class="row g-3 align-items-start mb-3">
+            <div class="col-auto">
+              <div class="rounded-3 overflow-hidden bg-body-secondary border border-secondary border-opacity-25" style="width: 96px; height: 96px;">
+                <img id="yd-cover" src="" alt="" class="w-100 h-100 object-fit-cover d-none">
+                <div id="yd-cover-ph" class="d-flex align-items-center justify-content-center text-body-secondary small text-center p-2 h-100">нет обложки</div>
               </div>
             </div>
-            <div class="d-flex flex-wrap gap-2 mt-3">
-              <button type="button" class="btn btn-outline-primary btn-sm rounded-3" id="yd-refresh">Обновить</button>
+            <div class="col min-w-0">
+              <div id="yd-status" class="text-body-secondary small mb-1">загрузка…</div>
+              <div id="yd-title" class="fw-semibold text-body text-truncate">—</div>
+              <div id="yd-sub" class="text-body-secondary small text-truncate">—</div>
+              <div id="yd-progress" class="text-body-secondary small mt-1 font-monospace">—</div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <span class="form-label small text-body-secondary d-block mb-2">Воспроизведение</span>
+            <div class="d-flex flex-wrap gap-2">
+              <button type="button" class="btn btn-outline-primary btn-sm rounded-3" id="yd-refresh" title="Разовый опрос">Обновить</button>
               <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" data-yd-act="play">Играть</button>
               <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" data-yd-act="pause">Пауза</button>
               <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" data-yd-act="prev">Назад</button>
               <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" data-yd-act="next">Вперёд</button>
             </div>
-            <div class="row g-2 align-items-end mt-3">
-              <div class="col-md-6">
-                <label class="form-label small mb-0 text-body-secondary" for="yd-vol">Громкость (0–1)</label>
-                <div class="input-group input-group-sm">
-                  <input type="number" class="form-control rounded-start-3" id="yd-vol" min="0" max="1" step="0.1" value="0.5">
-                  <button type="button" class="btn btn-outline-secondary rounded-end-3" id="yd-vol-set">Применить</button>
-                </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small mb-1 text-body-secondary" for="yd-vol">Громкость (0–1)</label>
+            <div class="input-group input-group-sm">
+              <input type="number" class="form-control rounded-start-3" id="yd-vol" min="0" max="1" step="0.1" value="0.5">
+              <button type="button" class="btn btn-outline-secondary rounded-end-3" id="yd-vol-set">Применить</button>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small mb-1 text-body-secondary" for="yd-send-text">Текстовая команда (sendText)</label>
+            <textarea class="form-control form-control-sm rounded-3" id="yd-send-text" rows="3" placeholder="Озвучить фразу или команда Алисе…"></textarea>
+            <div class="form-text">Дословное TTS или запрос: «включи свет», «поставь таймер на 5 минут». Ctrl+Enter — отправить.</div>
+            <button type="button" class="btn btn-primary btn-sm rounded-3 mt-2" id="yd-send-text-btn">Отправить</button>
+          </div>
+
+          <details>
+            <summary class="text-body-secondary small user-select-none">Запуск трека по id</summary>
+            <div class="row g-2 mt-2">
+              <div class="col-12">
+                <label class="form-label small text-body-secondary" for="yd-mid">music_id</label>
+                <input type="text" class="form-control form-control-sm rounded-3" id="yd-mid" placeholder="например 12345">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label small text-body-secondary" for="yd-mtype">music_type</label>
+                <input type="text" class="form-control form-control-sm rounded-3" id="yd-mtype" placeholder="track">
+              </div>
+              <div class="col-sm-6 d-flex align-items-end">
+                <button type="button" class="btn btn-outline-secondary btn-sm rounded-3 w-100" id="yd-play-music">play_music</button>
               </div>
             </div>
-            <details class="mt-3">
-              <summary class="text-body-secondary small user-select-none">Запуск трека по id (play_music)</summary>
-              <div class="row g-2 mt-2">
-                <div class="col-md-4">
-                  <label class="form-label small text-body-secondary" for="yd-mid">music_id</label>
-                  <input type="text" class="form-control form-control-sm rounded-3" id="yd-mid" placeholder="например 12345">
-                </div>
-                <div class="col-md-4">
-                  <label class="form-label small text-body-secondary" for="yd-mtype">music_type</label>
-                  <input type="text" class="form-control form-control-sm rounded-3" id="yd-mtype" placeholder="track">
-                </div>
-                <div class="col-md-4 d-flex align-items-end">
-                  <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" id="yd-play-music">play_music</button>
-                </div>
-              </div>
-            </details>
-            <p id="yd-err" class="text-danger small mt-2 mb-0 d-none" role="alert"></p>
-          </div>
+          </details>
+
+          <p id="yd-err" class="text-danger small mt-3 mb-0 d-none" role="alert"></p>
         </div>
+      </div>
     </div>
   </div>
+
   <script>
   (function () {
     var root = document.getElementById('yd-glagol-root');
@@ -173,12 +283,30 @@
         ph.classList.remove('d-none');
       }
     }
+    function setLiveBadge(j) {
+      var badge = document.getElementById('yd-live-badge');
+      if (!badge) return;
+      if (!j || !j.ok) {
+        badge.textContent = 'нет данных';
+        badge.className = 'badge rounded-pill text-bg-danger ms-auto';
+        return;
+      }
+      if (j.source === 'keepalive') {
+        badge.textContent = 'live';
+        badge.className = 'badge rounded-pill text-bg-success ms-auto';
+      } else {
+        badge.textContent = 'опрос';
+        badge.className = 'badge rounded-pill text-bg-info text-dark ms-auto';
+      }
+    }
     function applySnap(j) {
       showErr('');
+      setLiveBadge(j);
       var st = document.getElementById('yd-status');
       var title = document.getElementById('yd-title');
       var sub = document.getElementById('yd-sub');
       var prog = document.getElementById('yd-progress');
+      var volIn = document.getElementById('yd-vol');
       if (!j || !j.ok) {
         if (st) st.textContent = 'нет связи с колонкой';
         var msg = (j && j.error) || 'нет ответа';
@@ -189,27 +317,53 @@
       }
       var playing = j.playing;
       var pl = j.player;
+      if (volIn && j.volume != null && !isNaN(Number(j.volume))) {
+        volIn.value = String(Number(j.volume));
+      }
       if (st) {
         var bits = [];
         if (playing === true) bits.push('воспроизведение');
         else if (playing === false) bits.push('на паузе / тишина');
-        if (j.volume != null) bits.push('громкость ' + j.volume);
+        if (j.volume != null) bits.push('громкость ' + Number(j.volume).toFixed(2));
+        if (j.muted === true) bits.push('без звука');
         if (j.alice_state) bits.push('Алиса: ' + j.alice_state);
-        st.textContent = bits.length ? bits.join(' · ') : 'состояние не пришло — обновите позже';
+        if (j.hdmi_present === true) bits.push('HDMI');
+        else if (j.hdmi_capable === true && j.hdmi_present === false) bits.push('HDMI нет');
+        if (j.updated_at) {
+          var age = Math.max(0, Math.round(Date.now() / 1000 - j.updated_at));
+          bits.push('обновлено ' + age + ' с назад');
+        }
+        st.textContent = bits.length ? bits.join(' · ') : 'состояние не пришло';
       }
-      if (pl && (pl.title != null || pl.subtitle != null)) {
-        if (title) title.textContent = pl.title || pl.subtitle || '—';
-        if (sub) sub.textContent = pl.subtitle || pl.type || pl.playlist_type || '—';
+      var hasTrack = pl && (
+        (pl.title && String(pl.title).trim()) ||
+        (pl.subtitle && String(pl.subtitle).trim())
+      );
+      if (hasTrack) {
+        if (title) title.textContent = (pl.title && String(pl.title).trim()) || pl.subtitle || '—';
+        var subBits = [];
+        if (pl.subtitle && String(pl.subtitle).trim()) subBits.push(pl.subtitle);
+        if (pl.player_type) subBits.push(pl.player_type);
+        if (pl.playlist_type) subBits.push(pl.playlist_type);
+        if (sub) sub.textContent = subBits.length ? subBits.join(' · ') : '—';
         if (prog) prog.textContent = fmtSec(pl.progress_sec) + ' / ' + fmtSec(pl.duration_sec);
         setCover(pl.cover_url || '');
+      } else if (playing === true) {
+        if (title) title.textContent = 'воспроизведение';
+        if (sub) sub.textContent = pl && pl.live_stream_text ? pl.live_stream_text : (pl && pl.player_type) || '—';
+        if (prog) prog.textContent = pl ? (fmtSec(pl.progress_sec) + ' / ' + fmtSec(pl.duration_sec)) : '—';
+        setCover(pl && pl.cover_url ? pl.cover_url : '');
       } else {
         if (title) title.textContent = '—';
-        if (sub) sub.textContent = 'нет активного трека в кадрах Glagol';
+        if (sub) sub.textContent = 'нет активного трека';
         if (prog) prog.textContent = '—';
         setCover('');
       }
     }
+    var loadSnapInFlight = false;
     async function loadSnap() {
+      if (loadSnapInFlight) return;
+      loadSnapInFlight = true;
       try {
         var r = await fetch(base, { credentials: 'same-origin' });
         var ct = (r.headers.get('content-type') || '');
@@ -221,6 +375,8 @@
         applySnap(j);
       } catch (e) {
         showErr(String(e));
+      } finally {
+        loadSnapInFlight = false;
       }
     }
     async function postAct(body) {
@@ -243,6 +399,9 @@
           if (j.detail) em += ' — ' + j.detail;
           if (j.hint) em += ' ' + j.hint;
           showErr(em);
+        } else if (j.detail) {
+          var stOk = document.getElementById('yd-status');
+          if (stOk) stOk.textContent = 'отправлено (' + j.detail + ')';
         }
         await loadSnap();
       } catch (e) {
@@ -268,7 +427,99 @@
       var mt = document.getElementById('yd-mtype');
       postAct({ action: 'play_music', music_id: mid && mid.value, music_type: mt && mt.value });
     });
+    var sendTextBtn = document.getElementById('yd-send-text-btn');
+    var sendTextTa = document.getElementById('yd-send-text');
+    function sendTextCmd() {
+      var txt = sendTextTa && sendTextTa.value ? sendTextTa.value.trim() : '';
+      if (!txt) {
+        showErr('Введите текст команды');
+        return;
+      }
+      postAct({ text: txt });
+    }
+    if (sendTextBtn) sendTextBtn.addEventListener('click', sendTextCmd);
+    if (sendTextTa) {
+      sendTextTa.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          sendTextCmd();
+        }
+      });
+    }
+    window.__ydApplyGlagolSnap = applySnap;
     loadSnap();
+    if (typeof socket === 'undefined') {
+      setInterval(loadSnap, 30000);
+    }
+  })();
+  </script>
+  <script>
+  (function () {
+    var lanRoot = document.getElementById('yd-lan-status-root');
+    if (!lanRoot) return;
+    var stationId = (lanRoot.getAttribute('data-station-id') || '').trim();
+    var statusUrl = (lanRoot.getAttribute('data-status-url') || '').trim();
+    if (!stationId) return;
+    function badgeClass(phase) {
+      if (phase === 'connected') return 'text-bg-success';
+      if (phase === 'error' || phase === 'stopped') return 'text-bg-danger';
+      if (phase === 'idle' || phase === 'off') return 'text-bg-secondary';
+      return 'text-bg-warning text-dark';
+    }
+    function applyLanStatus(st) {
+      if (!st) return;
+      var ph = document.getElementById('yd-lan-phase');
+      var tx = document.getElementById('yd-lan-text');
+      var dt = document.getElementById('yd-lan-detail');
+      var cn = document.getElementById('yd-lan-counters');
+      if (ph) {
+        ph.textContent = st.phase || '—';
+        ph.className = 'badge rounded-pill ' + badgeClass(st.phase);
+      }
+      if (tx) tx.textContent = st.text || '—';
+      if (dt) {
+        if (st.detail) {
+          dt.textContent = st.detail;
+          dt.classList.remove('d-none');
+        } else {
+          dt.textContent = '';
+          dt.classList.add('d-none');
+        }
+      }
+      if (cn) cn.textContent = 'RX: ' + (st.frames_rx != null ? st.frames_rx : 0) + ' · TX: ' + (st.frames_tx != null ? st.frames_tx : 0);
+    }
+    function onYandexDevicesWs(payload) {
+      if (!payload || !payload.operation || !payload.data) return;
+      var d = payload.data;
+      if (String(d.station_id) !== String(stationId)) return;
+      if (payload.operation === 'glagol_ws_status') {
+        applyLanStatus(d);
+      } else if (payload.operation === 'glagol_snapshot' && typeof window.__ydApplyGlagolSnap === 'function') {
+        window.__ydApplyGlagolSnap(d);
+      }
+    }
+    var wsBound = false;
+    function bindYdWs() {
+      if (wsBound || typeof socket === 'undefined') return;
+      wsBound = true;
+      socket.emit('subscribeData', ['YandexDevices']);
+      socket.on('YandexDevices', onYandexDevicesWs);
+    }
+    bindYdWs();
+    document.addEventListener('DOMContentLoaded', bindYdWs);
+    async function pollFallback() {
+      if (!statusUrl || (typeof socket !== 'undefined' && socket.connected)) return;
+      try {
+        var r = await fetch(statusUrl, { credentials: 'same-origin' });
+        if (!r.ok) return;
+        var j = await r.json();
+        applyLanStatus(j[stationId] || j[String(stationId)]);
+      } catch (e) { /* ignore */ }
+    }
+    if (typeof socket === 'undefined') {
+      setInterval(pollFallback, 30000);
+      pollFallback();
+    }
   })();
   </script>
 {% endblock %}

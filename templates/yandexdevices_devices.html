@@ -12,8 +12,24 @@
   </div>
 </div>
 {% else %}
+<style>
+  table.dataTable.table.yd-devices-table tr.yd-device-has-links td {
+    background-color: rgba(var(--bs-primary-rgb), 0.07);
+  }
+  table.dataTable.table.yd-devices-table tr.yd-device-has-links td:first-child {
+    box-shadow: inset 3px 0 0 0 var(--bs-primary);
+  }
+  table.dataTable.table.yd-devices-table tr.yd-device-has-links:hover td {
+    background-color: rgba(var(--bs-primary-rgb), 0.11);
+  }
+  .yd-cap-links {
+    max-width: 22rem;
+    max-height: 7.5rem;
+    overflow-y: auto;
+  }
+</style>
 <div class="table-responsive mx-n1">
-  <table class="table table-hover table-sm align-middle mb-0 border-secondary border-opacity-25">
+  <table id="yd-dt-devices" class="table table-hover table-sm align-middle mb-0 border-secondary border-opacity-25 yd-devices-table" data-yd-datatable>
     <thead class="border-bottom border-secondary border-opacity-50">
       <tr>
         <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Устройство</th>
@@ -21,12 +37,13 @@
         <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Комната</th>
         <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">IOT id</th>
         <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap bg-transparent border-0">Обновлено</th>
+        <th scope="col" class="small text-body-secondary text-uppercase fw-semibold bg-transparent border-0">Привязки параметров</th>
         <th scope="col" class="small text-body-secondary text-uppercase fw-semibold text-nowrap text-end bg-transparent border-0">Действия</th>
       </tr>
     </thead>
     <tbody>
       {% for device in devices %}
-      <tr>
+      <tr class="{% if device.capability_links %}yd-device-has-links{% endif %}">
         <td>
           <div class="d-flex align-items-center gap-2">
             <img src="{{ device.icon }}" alt="" width="32" height="32" class="rounded-3 border bg-body-secondary p-1 flex-shrink-0 object-fit-contain" onError="this.src='/YandexDevices/static/YandexDevices.png'">
@@ -36,7 +53,24 @@
         <td><code class="small user-select-all d-inline-block px-2 py-1 rounded-2 bg-body-secondary text-body-emphasis">{{ device.device_type }}</code></td>
         <td class="text-body-secondary">{{ device.room }}</td>
         <td><span class="font-monospace small text-body-secondary text-break">{{ device.iot_id }}</span></td>
-        <td class="text-body-secondary small" id="dev{{ device.id }}_updated">{{ device.updated }}</td>
+        <td class="text-body-secondary small" id="dev{{ device.id }}_updated" data-order="{{ device.updated.timestamp() if device.updated else 0 }}">{{ device.updated }}</td>
+        <td class="small align-top py-2" data-order="{{ device.capability_links|length }}">
+          {% if device.capability_links %}
+          <ul class="list-unstyled mb-0 yd-cap-links">
+            {% for link in device.capability_links %}
+            <li class="{% if not loop.last %}mb-2 pb-2 border-bottom border-secondary border-opacity-25{% endif %}">
+              <div class="d-flex flex-wrap align-items-baseline gap-1">
+                <span class="fw-semibold text-body text-break">{{ link.title }}</span>
+                <span class="text-body-secondary flex-shrink-0" aria-hidden="true">→</span>
+                <code class="small user-select-all text-break d-inline-block px-2 py-1 rounded-2 bg-body-secondary text-body-emphasis">{{ link.target }}</code>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <span class="text-body-secondary">—</span>
+          {% endif %}
+        </td>
         <td class="text-end text-nowrap">
           <div class="btn-group btn-group-sm" role="group" aria-label="Действия">
             <a href="?op=edit&device={{ device.id }}" class="btn btn-outline-primary rounded-start-3" title="Изменить"><i class="feather icon-edit-2"></i></a>

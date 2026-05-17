@@ -18,6 +18,8 @@
 - ✅ **Связывание методов**: Связывание команд устройств с методами объектов
 - ✅ **Интеграция поиска**: Поиск устройств и станций
 - ✅ **Поддержка виджетов**: Виджет панели управления
+- ✅ **LAN Glagol**: фоновый WebSocket к колонкам, снимок в связанный объект, живая админка (Socket.IO)
+- ✅ **Команды Glagol**: `glagol_command` из методов объектов через `callPluginFunction`
 
 ## Панель администратора
 
@@ -51,16 +53,25 @@
 4. Сгенерируйте токен устройства для станции
 5. Свяжите возможности со свойствами объектов
 
+Для LAN: IP станции, токен, при необходимости `glagol_linked_object`. См. [docs/Commands.md](docs/Commands.md) и [docs/USER_GUIDE.ru.md](docs/USER_GUIDE.ru.md#lan-glagol-локальное-управление).
+
+## Документация
+
+- [docs/index.ru.md](docs/index.ru.md) — оглавление
+- [docs/USER_GUIDE.ru.md](docs/USER_GUIDE.ru.md) — админка и настройка
+- [docs/TECHNICAL_REFERENCE.ru.md](docs/TECHNICAL_REFERENCE.ru.md) — реализация
+- [docs/Commands.md](docs/Commands.md) — `glagol_command` из объектов
+
 ## Технические детали
 
-- **API**: API Yandex Quasar
+- **API**: Yandex Quasar; LAN Glagol (WebSocket :1961)
 - **Аутентификация**: OAuth с QR кодом
 - **Типы устройств**: Яндекс Станции, умные колонки, IoT устройства
 - **Возможности**: вкл/выкл, громкость, яркость и т.д.
 
 ## Версия
 
-Текущая версия: **0.2**
+Текущая версия: **0.22** (поле `version` в `plugins/YandexDevices/__init__.py`)
 
 ## Категория
 
@@ -78,6 +89,7 @@ Devices
 - Flask
 - SQLAlchemy
 - Requests
+- websocket-client (Glagol LAN)
 - Основная система osysHome
 
 ## Автор

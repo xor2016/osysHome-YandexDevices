@@ -1,9 +1,12 @@
 # YandexDevices
 
-The `YandexDevices` documentation is split into two main documents:
+Plugin for Yandex Quasar IoT devices and **local Glagol** control of Yandex Stations (LAN WebSocket, port 1961).
 
-- [User Guide](USER_GUIDE.md)
-- [Technical Reference](TECHNICAL_REFERENCE.md)
+The documentation is split into:
+
+- [User Guide](USER_GUIDE.md) — admin UI, authorization, links, LAN setup
+- [Technical Reference](TECHNICAL_REFERENCE.md) — data model, routes, polling, Glagol internals
+- [Commands](Commands.md) — `glagol_command` from object methods via `callPluginFunction`
 
 ## What to open
 
@@ -14,6 +17,8 @@ If you need implementation details, data model, endpoint behavior, polling logic
 ## Quick links
 
 - [Jump to quick start checklist](USER_GUIDE.md#quick-start-checklist)
+- [Jump to LAN Glagol setup](USER_GUIDE.md#lan-glagol-local-control)
+- [Jump to Glagol commands from objects](Commands.md)
 - [Jump to capabilities and links](USER_GUIDE.md#how-capability-links-work)
 - [Jump to admin and HTTP routes](TECHNICAL_REFERENCE.md#admin-and-http-routes)
-- [Jump to polling and synchronization flow](TECHNICAL_REFERENCE.md#polling-and-synchronization-flow)
+- [Jump to Glagol keepalive and WebSocket](TECHNICAL_REFERENCE.md#lan-glagol-keepalive)

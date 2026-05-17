@@ -1,8 +1,17 @@
+"""
+Плагин YandexDevices: колонки и устройства Яндекс.Quasar, локальный Glagol (LAN).
+
+Документация:
+  - plugins/YandexDevices/docs/index.ru.md — оглавление документации
+  - plugins/YandexDevices/docs/Commands.md — glagol_command из методов объектов
+"""
 import datetime
 import os
 import re
 import threading
-from flask import redirect, request, jsonify, render_template
+import time
+from collections import defaultdict
+from flask import redirect, request, jsonify, render_template, url_for
 from app.authentication.handlers import handle_admin_required
 from plugins.YandexDevices.models.YaDevices import YaDevices
 from plugins.YandexDevices.models.YaStation import YaStation
@@ -15,23 +24,37 @@ from app.database import session_scope, row2dict, get_now_to_utc
 from plugins.YandexDevices.QuazarApi import QuazarApi
 from time import sleep
 from sqlalchemy import and_, select, distinct
-from typing import Optional
+from typing import Any, Dict, Optional
 
 class YandexDevices(BasePlugin):
 
     def __init__(self,app):
         super().__init__(app,__name__)
+        self.name = "YandexDevices"
         self.title = "Yandex Devices"
-        self.description = """Yandex Devices Plugin"""
+        self.description = (
+            "Колонки и устройства Яндекса (Quasar + LAN Glagol). "
+            "Документация: plugins/YandexDevices/docs/index.ru.md"
+        )
         self.actions = ["cycle","say","widget"]
         self.category = "Devices"
-        self.version = 0.2
+        self.version = 0.22
         self.author = 'Eraser'
 
     def initialization(self):
         cache_dir = os.path.join(getCacheDir(), self.name)
         os.makedirs(cache_dir, exist_ok=True)
         self.quazar = QuazarApi(cache_dir, self.logger, user_notify=self._quazar_user_notify)
+        from plugins.YandexDevices.glagol_keepalive import GlagolWsRegistry
+
+        self._glagol_registry = GlagolWsRegistry(self)
+        self._glagol_registry.sync_stations()
+
+    def stop_cycle(self):
+        reg = getattr(self, "_glagol_registry", None)
+        if reg is not None:
+            reg.shutdown()
+        super().stop_cycle()
 
     def _quazar_user_notify(self, title: str, description: str = "", level: str = "warning"):
         """Уведомление в интерфейсе (лентa уведомлений) при проблемах с Яндексом."""
@@ -78,22 +101,45 @@ class YandexDevices(BasePlugin):
             return redirect("YandexDevices")
 
         if op == "generate_dev_token":
-            id = request.args.get('id', None)
+            sid = request.args.get("id", None)
+            if not sid:
+                return redirect("YandexDevices")
             with session_scope() as session:
-                station = session.query(YaStation).where(YaStation.id == id).one_or_none()
+                station = session.query(YaStation).filter(YaStation.id == sid).one_or_none()
+                if not station:
+                    self.logger.warning("generate_dev_token: станция id=%s не найдена", sid)
+                    return redirect("YandexDevices")
+                if not (station.iot_id and station.platform):
+                    self.logger.warning(
+                        "generate_dev_token: у станции «%s» нет iot_id/platform — сначала Update в списке станций",
+                        station.title,
+                    )
+                    return redirect(f"?station={sid}&op=edit")
                 token = self.quazar.get_device_token(station.iot_id, station.platform)
-                station.device_token = token
-                session.commit()
-
-            return redirect("?station=" + id + "&op=edit")
+                if token:
+                    station.device_token = token
+                    session.commit()
+                    self.logger.info(
+                        "Glagol: токен обновлён для станции id=%s «%s»",
+                        sid,
+                        station.title,
+                    )
+                    reg = getattr(self, "_glagol_registry", None)
+                    if reg is not None:
+                        reg.sync_stations()
+                else:
+                    self.logger.warning(
+                        "generate_dev_token: Яндекс не выдал токен для «%s» — проверьте Authorization",
+                        station.title,
+                    )
+            return redirect(f"?station={sid}&op=edit")
 
         if op == 'edit':
             if device:
                 return render_template("yandexdevices_device.html", id=device)
             if station:
                 from plugins.YandexDevices.forms.StationForm import editStation
-                result = editStation(request)
-                return result
+                return editStation(request, self)
             
         if op == 'delete':
             if device:
@@ -117,8 +163,39 @@ class YandexDevices(BasePlugin):
                 self.saveConfig()
 
         if tab == 'devices':
-            devices = YaDevices.query.all()
-            devices = [row2dict(device) for device in devices]
+            def _format_capability_target(cap):
+                lo = (cap.linked_object or "").strip()
+                if not lo:
+                    return None
+                t = lo
+                lp = (cap.linked_property or "").strip()
+                if lp:
+                    t = f"{t}.{lp}"
+                lm = cap.linked_method or ""
+                if lm:
+                    t = f"{t}{lm}"
+                return t
+
+            with session_scope() as session:
+                devices_rows = session.query(YaDevices).all()
+                devices = [row2dict(device) for device in devices_rows]
+                dev_ids = [d["id"] for d in devices]
+                links_by_device = defaultdict(list)
+                if dev_ids:
+                    caps = (
+                        session.query(YaCapabilities)
+                        .filter(YaCapabilities.device_id.in_(dev_ids))
+                        .order_by(YaCapabilities.device_id, YaCapabilities.title)
+                    )
+                    for cap in caps:
+                        target = _format_capability_target(cap)
+                        if target is None:
+                            continue
+                        links_by_device[cap.device_id].append(
+                            {"title": cap.title or "", "target": target}
+                        )
+                for d in devices:
+                    d["capability_links"] = links_by_device[d["id"]]
             content = {
                 "devices": devices,
                 "tab": tab,
@@ -128,10 +205,30 @@ class YandexDevices(BasePlugin):
 
         stations = YaStation.query.all()
         stations = [row2dict(station) for station in stations]
+        glagol_lan_by_id: dict = {}
+        glagol_ws_status_url = ""
+        for ep in self._app.view_functions:
+            if str(ep).endswith("yandexdevices_glagol_ws_status"):
+                try:
+                    glagol_ws_status_url = url_for(ep)
+                except Exception:
+                    glagol_ws_status_url = ""
+                break
+        reg = getattr(self, "_glagol_registry", None)
+        if reg is not None:
+            for s in stations:
+                sid = s.get("id")
+                if sid is not None:
+                    try:
+                        glagol_lan_by_id[int(sid)] = reg.get_station_status(int(sid))
+                    except (TypeError, ValueError):
+                        pass
         content = {
             'stations': stations,
             "tab": tab,
             'form': settings,
+            "glagol_lan_by_id": glagol_lan_by_id,
+            "glagol_ws_status_url": glagol_ws_status_url,
         }
         return self.render('yandexdevices_stations.html', content)
 
@@ -210,11 +307,18 @@ class YandexDevices(BasePlugin):
                 station_iot_id,
                 station_platform,
                 station_device_token,
+                refresh_if_expired=True,
             )
             if not token:
                 return jsonify({"ok": False, "error": "no device token"}), 400
 
             if request.method == "GET":
+                reg = getattr(self, "_glagol_registry", None)
+                if reg is not None:
+                    cached = reg.get_station_snapshot(station_db_id)
+                    if cached:
+                        return jsonify(cached)
+
                 snap, conn_detail = glagol_snapshot(host, port, token, self.logger)
                 if snap is None:
                     hint = ""
@@ -236,10 +340,39 @@ class YandexDevices(BasePlugin):
                         ),
                         502,
                     )
-                return jsonify({"ok": True, **snap})
+                return jsonify({"ok": True, "source": "poll", **snap})
 
             body = request.get_json(silent=True) or {}
+            text_raw = body.get("text")
+            if text_raw is not None and str(text_raw).strip():
+                from plugins.YandexDevices.glagol_local import glagol_send_text
+
+                phrase = self._sanitize_tts_text(str(text_raw), 2000)
+                send_fn = self._glagol_lan_send_fn(station_db_id, host, port, token)
+                ok, resp, detail = glagol_send_text(
+                    host, port, token, phrase, self.logger, send_fn=send_fn
+                )
+                out: Dict[str, Any] = {"ok": bool(ok), "action": "sendText"}
+                if resp is not None:
+                    out["response"] = resp
+                if detail:
+                    out["detail"] = detail
+                if not ok and resp is not None:
+                    out["error"] = "sendText not acknowledged"
+                return jsonify(out), (200 if ok else 400)
+
             action = (body.get("action") or "").strip()
+            if not action:
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": "action or text required",
+                            "detail": "Передайте text (sendText) или action (плеер).",
+                        }
+                    ),
+                    400,
+                )
             kw: dict = {}
             if "volume" in body and body.get("volume") is not None:
                 kw["volume"] = float(body["volume"])
@@ -254,7 +387,10 @@ class YandexDevices(BasePlugin):
             if body.get("music_type") is not None:
                 kw["music_type"] = body.get("music_type")
 
-            resp, cmd_err = glagol_player_command(host, port, token, self.logger, action, **kw)
+            send_fn = self._glagol_lan_send_fn(station_db_id, host, port, token)
+            resp, cmd_err = glagol_player_command(
+                host, port, token, self.logger, action, send_fn=send_fn, **kw
+            )
             if not resp:
                 hint = ""
                 d = cmd_err or ""
@@ -276,14 +412,37 @@ class YandexDevices(BasePlugin):
                     ),
                     502,
                 )
-            ok = resp.get("status") == "ok"
-            return jsonify({"ok": ok, "response": resp}), (200 if ok else 400)
+            from plugins.YandexDevices.glagol_local import _glagol_response_ok
+
+            ok = _glagol_response_ok(resp)
+            out = {"ok": ok, "response": resp, "action": action}
+            if not ok:
+                out["error"] = "command not acknowledged"
+                out["detail"] = str(resp.get("status") or resp)
+            return jsonify(out), (200 if ok else 400)
+
+        @self.blueprint.route(
+            "/admin/" + _admin + "/glagol_ws_status",
+            methods=["GET"],
+        )
+        @handle_admin_required
+        def yandexdevices_glagol_ws_status():
+            reg = getattr(self, "_glagol_registry", None)
+            if not reg:
+                return jsonify({})
+            return jsonify(reg.get_all_status())
 
     def cyclic_task(self):
         # self.refresh_stations()
         if self.config.get("get_device_data", False):
             self.refresh_devices_data()
 
+        now = time.monotonic()
+        if now - getattr(self, "_last_glagol_registry_sync", 0.0) >= 5.0:
+            self._last_glagol_registry_sync = now
+            reg = getattr(self, "_glagol_registry", None)
+            if reg is not None:
+                reg.sync_stations()
         self.event.wait(1.0)
 
     def update_devices(self):
@@ -725,6 +884,28 @@ class YandexDevices(BasePlugin):
         result = self.quazar.api_request('https://iot.quasar.yandex.ru/m/user/devices/' + device.iot_id + '/actions', 'POST', payload)
         self.logger.debug(result)
 
+    def _glagol_lan_send_fn(
+        self,
+        station_id: int,
+        host: str,
+        port: int,
+        token: str,
+    ):
+        """Отправка Glagol-команды через фоновый WS, иначе отдельное подключение."""
+        from plugins.YandexDevices.glagol_local import glagol_request
+
+        plugin = self
+
+        def _send(payload: Dict[str, Any]):
+            reg = getattr(plugin, "_glagol_registry", None)
+            if reg is not None:
+                resp, err, used = reg.send_payload(int(station_id), token, payload)
+                if used:
+                    return resp, err
+            return glagol_request(host, port, token, payload, plugin.logger)
+
+        return _send
+
     def _sanitize_tts_text(self, message: str, max_len: int) -> str:
         message = message.replace('(', ' ').replace(')', ' ')
         message = re.sub(r'<.+?>', '', message)
@@ -739,9 +920,21 @@ class YandexDevices(BasePlugin):
         iot_id: Optional[str],
         platform: Optional[str],
         existing_token: Optional[str],
+        *,
+        refresh_if_expired: bool = False,
     ) -> Optional[str]:
-        """Возвращает ``device_token`` по данным строки БД; при отсутствии — запрос к Quasar и запись в БД."""
-        token = existing_token
+        """Возвращает ``device_token``; при необходимости запрашивает новый у Quasar."""
+        from plugins.YandexDevices.glagol_local import glagol_token_expired, glagol_token_exp_unix
+
+        token = (existing_token or "").strip() or None
+        if refresh_if_expired and token and glagol_token_expired(token):
+            exp = glagol_token_exp_unix(token)
+            self.logger.warning(
+                "Glagol: токен станции id=%s истёк (exp=%s) — запрос нового у Quasar",
+                station_id,
+                int(exp) if exp else "?",
+            )
+            token = None
         if not token and iot_id and platform:
             token = self.quazar.get_device_token(iot_id, platform)
             if token:
@@ -767,6 +960,143 @@ class YandexDevices(BasePlugin):
             station.platform,
             station.device_token,
         )
+
+    def _find_station_for_glagol(self, session, kwargs: Dict[str, Any]) -> Optional[YaStation]:
+        """Станция по ``station_id``, имени объекта ``glagol_linked_object`` или ``station``/``station_title``."""
+        sid = kwargs.get("station_id")
+        if sid is not None and str(sid).strip() != "":
+            try:
+                return session.query(YaStation).filter(YaStation.id == int(sid)).one_or_none()
+            except (TypeError, ValueError):
+                pass
+        obj = (kwargs.get("object") or kwargs.get("object_name") or "").strip()
+        if obj:
+            st = session.query(YaStation).filter(YaStation.glagol_linked_object == obj).one_or_none()
+            if st:
+                return st
+        title = (kwargs.get("station") or kwargs.get("station_title") or "").strip()
+        if title:
+            return session.query(YaStation).filter(YaStation.title == title).one_or_none()
+        return None
+
+    def glagol_command(self, **kwargs: Any) -> Dict[str, Any]:
+        """
+        Универсальная отправка команды Glagol (LAN) в колонку.
+
+        Предназначен для вызова из методов объектов osysHome через
+        ``callPluginFunction("YandexDevices", "glagol_command", {...})``.
+        См. ``plugins/YandexDevices/docs/Commands.md``.
+        """
+        from plugins.YandexDevices.glagol_local import (
+            glagol_player_command,
+            glagol_send_text,
+            parse_host_port,
+        )
+
+        base: Dict[str, Any] = {"ok": False}
+        with session_scope() as session:
+            st = self._find_station_for_glagol(session, kwargs)
+            if not st:
+                return {
+                    **base,
+                    "error": "station not found",
+                    "detail": "Укажите station_id, object (glagol_linked_object) или station (title).",
+                }
+            station_id = int(st.id)
+            station_title = st.title or ""
+            host, port = parse_host_port(st.ip or "")
+            iot_id = st.iot_id
+            platform = st.platform
+            device_token = st.device_token
+
+        base["station_id"] = station_id
+        base["station_title"] = station_title
+
+        if not host:
+            return {**base, "error": "no IP", "detail": "Задайте LAN-IP в карточке станции."}
+
+        token = self._ensure_device_token(
+            station_id, iot_id, platform, device_token, refresh_if_expired=True
+        )
+        if not token:
+            return {
+                **base,
+                "error": "no device token",
+                "detail": "Сформируйте или обновите токен в карточке станции (кнопка «Обновить токен»).",
+            }
+
+        text = kwargs.get("text")
+        if text is not None and str(text).strip():
+            phrase = self._sanitize_tts_text(str(text), 2000)
+            send_fn = self._glagol_lan_send_fn(station_id, host, port, token)
+            ok, resp, detail = glagol_send_text(
+                host, port, token, phrase, self.logger, send_fn=send_fn
+            )
+            out = {
+                **base,
+                "ok": bool(ok),
+                "action": "sendText",
+                "host": host,
+                "port": port,
+            }
+            if resp is not None:
+                out["response"] = resp
+            if detail:
+                out["detail"] = detail
+            if not ok and resp is not None:
+                out["error"] = "sendText not acknowledged"
+            return out
+
+        action = (kwargs.get("action") or "").strip()
+        if not action:
+            return {
+                **base,
+                "error": "action or text required",
+                "detail": "Передайте action (play, pause, volume, …) или text (sendText).",
+            }
+
+        cmd_kw: Dict[str, Any] = {}
+        if kwargs.get("volume") is not None:
+            cmd_kw["volume"] = float(kwargs["volume"])
+        if kwargs.get("position") is not None:
+            cmd_kw["position"] = float(kwargs["position"])
+        if kwargs.get("repeat_mode") is not None:
+            cmd_kw["repeat_mode"] = kwargs.get("repeat_mode")
+        if "shuffle" in kwargs and kwargs.get("shuffle") is not None:
+            cmd_kw["shuffle"] = bool(kwargs.get("shuffle"))
+        if kwargs.get("music_id") is not None:
+            cmd_kw["music_id"] = kwargs.get("music_id")
+        if kwargs.get("music_type") is not None:
+            cmd_kw["music_type"] = kwargs.get("music_type")
+
+        send_fn = self._glagol_lan_send_fn(station_id, host, port, token)
+        resp, cmd_err = glagol_player_command(
+            host, port, token, self.logger, action, send_fn=send_fn, **cmd_kw
+        )
+        if not resp:
+            return {
+                **base,
+                "action": action,
+                "error": "no response",
+                "detail": cmd_err,
+                "host": host,
+                "port": port,
+            }
+        from plugins.YandexDevices.glagol_local import _glagol_response_ok
+
+        ok = _glagol_response_ok(resp)
+        out = {
+            **base,
+            "ok": ok,
+            "action": action,
+            "response": resp,
+            "host": host,
+            "port": port,
+        }
+        if not ok:
+            out["error"] = "command not acknowledged"
+            out["detail"] = str(resp.get("status") or resp)
+        return out
 
     def send_command_to_station(self, station: YaStation, command: str):
         """Локальный TTS/команда по WebSocket Glagol (нужны IP, platform, iot_id, device_token)."""
@@ -794,9 +1124,24 @@ class YandexDevices(BasePlugin):
             )
             return False
 
-        ok = glagol_send_text(host, port, token, text, self.logger)
+        station_id = int(station.id) if station.id is not None else 0
+        send_fn = self._glagol_lan_send_fn(station_id, host, port, token) if station_id else None
+        ok, _resp, detail = glagol_send_text(
+            host,
+            port,
+            token,
+            text,
+            self.logger,
+            send_fn=send_fn,
+        )
         if not ok:
-            self.logger.warning("Local TTS: отправка не удалась (%s:%s), станция «%s»", host, port, station.title)
+            self.logger.warning(
+                "Local TTS: отправка не удалась (%s:%s), станция «%s»%s",
+                host,
+                port,
+                station.title,
+                f" — {detail}" if detail else "",
+            )
         return ok
 
     def send_command_to_stationCloud(self, station, command):

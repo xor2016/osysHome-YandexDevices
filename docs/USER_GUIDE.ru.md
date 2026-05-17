@@ -47,6 +47,7 @@
 - [ ] Перейдите в `Authorization` и завершите вход по QR.
 - [ ] Нажмите `Update`, чтобы загрузить станции и устройства.
 - [ ] Во вкладке `Stations` настройте TTS на нужных станциях.
+- [ ] Для LAN: у станции укажите **IP**, **Сформировать токен**, при необходимости **объект osysHome** (`glagol_linked_object`).
 - [ ] Во вкладке `Devices` откройте устройство и задайте привязки.
 - [ ] В `Settings` включите опрос, если нужны периодические обновления.
 
@@ -92,12 +93,52 @@ YandexDevices?op=auth
 | `Title` | Название станции в базе модуля |
 | `Platform` | Идентификатор платформы Yandex |
 | `IOT id` | IoT-идентификатор |
-| `IP` | Опциональный IP станции |
-| `Token` | Device token для локального управления |
-| `TTS` | `No`, `Local (not work)`, `Cloud` |
+| `IP` | IP станции в LAN (для Glagol) |
+| `Token` | Токен устройства (`Generate token` / «Сформировать токен») |
+| `Объект osysHome (имя)` | `glagol_linked_object` — объект для снимка состояния Glagol |
+| `TTS` | `No`, `Local (Glagol / LAN)`, `Cloud` |
 | `Min level SAY` | Минимальный уровень для `say()` |
 
+Карточка станции — две колонки: **настройки** слева; **статус LAN Glagol**, **плеер** и подсказки по свойствам справа. При активном фоновом WebSocket статус и трек обновляются через Socket.IO.
+
 Если токена нет, используйте `Generate token` в карточке станции.
+
+---
+
+## LAN Glagol (локальное управление)
+
+**Glagol** — локальный протокол Яндекса (WebSocket, порт **1961**): TTS, плеер и запись состояния колонки в объект osysHome без постоянного HTTP-опроса.
+
+### Настройка
+
+1. Завершите **Authorization** и **Update**, чтобы станции появились в списке.
+2. Карточка станции: **IP** в LAN, **Сформировать токен**.
+3. При необходимости — **объект osysHome (имя)** (то же имя, что в дереве объектов, не id в БД).
+4. Создайте на объекте свойства из списка в карточке станции.
+
+### Команды из методов объектов
+
+Полный справочник — **[Commands.md](Commands.md)**.
+
+```python
+from app.core.lib.common import callPluginFunction
+
+r = callPluginFunction("YandexDevices", "glagol_command", {
+    "object": self.name,
+    "text": "Включи свет в гостиной",
+})
+```
+
+`self.name` должно совпадать с `glagol_linked_object` у станции.
+
+### Живая админка
+
+При заданных IP и токене плагин держит фоновое соединение. В объект пишутся: `state`, `volume`, `muted`, `alice_state`, `media_title`, `media_subtitle`, `media_duration`, `media_progress`, `media_cover_url`.
+
+Страница станции: `subscribeData` → `YandexDevices`:
+
+- `glagol_snapshot` — плеер / трек;
+- `glagol_ws_status` — фаза соединения, счётчики RX/TX.
 
 ---
 
@@ -170,8 +211,8 @@ say(message, level=0, args=None)
 
 Режимы:
 
-- `tts = 1` (`Local`) - в текущем UI помечено как неработающее.
-- `tts = 2` (`Cloud`) - выполняется через сценарий Yandex.
+- `tts = 1` (`Local (Glagol / LAN)`) — `sendText` по LAN; нужны IP, `platform`, `iot_id` и токен.
+- `tts = 2` (`Cloud`) — сценарий Yandex на сервере.
 
 Длинные сообщения в cloud-режиме разбиваются на предложения и отправляются по частям.
 
@@ -233,7 +274,18 @@ say(message, level=0, args=None)
 
 ---
 
+### LAN Glagol не подключается
+
+Проверьте:
+
+- **IP** доступен с хоста osysHome;
+- **токен** актуален (при сомнении сформируйте заново);
+- с хоста osysHome разрешён исходящий TCP к колонке на порт **1961**.
+
+---
+
 ## См. также
 
+- [Команды Glagol (Commands.md)](Commands.md)
 - [Техническая документация](TECHNICAL_REFERENCE.ru.md)
 - [Индекс модуля](index.ru.md)

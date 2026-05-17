@@ -47,6 +47,7 @@ Tabs:
 - [ ] Go to `Authorization` and complete QR login.
 - [ ] Click `Update` to import stations and IoT devices.
 - [ ] Open `Stations` and configure TTS mode for needed stations.
+- [ ] For LAN: set station **IP**, **Generate token**, optional **osysHome object** (`glagol_linked_object`).
 - [ ] Open `Devices`, choose a device, and configure capability links.
 - [ ] Enable module polling in `Settings` if periodic updates are required.
 
@@ -92,12 +93,52 @@ Fields:
 | `Title` | Station name in module DB |
 | `Platform` | Yandex platform identifier |
 | `IOT id` | Quasar IoT identifier |
-| `IP` | Optional station IP |
-| `Token` | Device token (generated in UI) |
-| `TTS` | `No`, `Local (not work)`, `Cloud` |
+| `IP` | Station LAN address (required for Glagol) |
+| `Token` | Device token (`Generate token` in station card) |
+| `osysHome object (name)` | `glagol_linked_object` — object that receives Glagol snapshot properties |
+| `TTS` | `No`, `Local (Glagol / LAN)`, `Cloud` |
 | `Min level SAY` | Minimum message level required for `say()` |
 
+The station edit page is two columns: **settings** on the left; **LAN Glagol status**, **player**, and property hints on the right. Status and track info update over Socket.IO when a background WebSocket to the station is active.
+
 If token is missing, use `Generate token` inside station edit page.
+
+---
+
+## LAN Glagol (local control)
+
+Glagol is Yandex’s LAN protocol (WebSocket, port **1961**). Use it for local TTS, player control, and pushing station state into an osysHome object without polling HTTP.
+
+### Setup
+
+1. Complete **Authorization** and **Update** so stations appear in the list.
+2. Open the station card: set **IP** on the LAN, click **Generate token**.
+3. Optionally set **osysHome object (name)** — the same name as the object in the object tree (not a DB id).
+4. Create matching properties on that object (the station card lists suggested property names from the Glagol snapshot).
+
+### Commands from object methods
+
+See **[Commands.md](Commands.md)** for full `glagol_command` parameters and examples.
+
+```python
+from app.core.lib.common import callPluginFunction
+
+r = callPluginFunction("YandexDevices", "glagol_command", {
+    "object": self.name,
+    "text": "Turn on the living room light",
+})
+```
+
+`self.name` must match `glagol_linked_object` on the station.
+
+### Live admin UI
+
+When IP and token are set, the plugin keeps a background connection. The linked object receives: `state`, `volume`, `muted`, `alice_state`, `media_title`, `media_subtitle`, `media_duration`, `media_progress`, `media_cover_url`.
+
+The station page subscribes via Socket.IO (`subscribeData` → `YandexDevices`):
+
+- `glagol_snapshot` — player / track;
+- `glagol_ws_status` — connection phase, RX/TX frame counters.
 
 ---
 
@@ -170,8 +211,8 @@ Filtering logic:
 
 Modes:
 
-- `tts = 1` (`Local`) - currently marked in UI as not working.
-- `tts = 2` (`Cloud`) - uses Yandex scenario-based server action.
+- `tts = 1` (`Local (Glagol / LAN)`) — `sendText` over LAN; requires IP, `platform`, `iot_id`, and device token.
+- `tts = 2` (`Cloud`) — Yandex scenario-based server action.
 
 Long cloud messages are split into short sentences and sent sequentially.
 
@@ -233,7 +274,18 @@ Check:
 
 ---
 
+### LAN Glagol does not connect
+
+Check:
+
+- station **IP** is reachable from the osysHome host;
+- **device token** is current (regenerate if needed);
+- firewall allows outbound TCP to the station on port **1961**.
+
+---
+
 ## See Also
 
+- [Glagol commands (Commands.md)](Commands.md)
 - [Technical Reference](TECHNICAL_REFERENCE.md)
 - [Module index](index.md)

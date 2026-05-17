@@ -40,10 +40,14 @@
 Модуль ``plugins/YandexDevices/requirements.txt`` задаёт зависимость ``websocket-client``;
 при старте приложения она подтягивается из ``PluginsHelper`` вместе с остальными
 зависимостями плагина.
+
+Вызов из методов объектов — ``glagol_command`` (``plugins/YandexDevices/docs/Commands.md``).
+Обзор модуля — ``plugins/YandexDevices/docs/index.ru.md``.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import ssl
@@ -54,6 +58,30 @@ from typing import Any, Dict, Optional, Tuple
 DEFAULT_GLAGOL_PORT = 1961
 READ_TIMEOUT_SEC = 15.0
 CONNECT_TIMEOUT_SEC = 8.0
+
+
+def glagol_token_exp_unix(token: str) -> Optional[float]:
+    """``exp`` из JWT ``conversationToken`` (секунды UTC) или ``None``."""
+    try:
+        parts = (token or "").split(".")
+        if len(parts) < 2:
+            return None
+        pad = "=" * (-len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(parts[1] + pad))
+        exp = payload.get("exp")
+        if isinstance(exp, (int, float)):
+            return float(exp)
+    except Exception:
+        return None
+    return None
+
+
+def glagol_token_expired(token: str, *, skew_sec: float = 120.0) -> bool:
+    """True, если JWT истёк или истекает в ближайшие ``skew_sec`` секунд."""
+    exp = glagol_token_exp_unix(token)
+    if exp is None:
+        return False
+    return time.time() >= exp - float(skew_sec)
 
 
 def parse_host_port(ip_field: str, default_port: int = DEFAULT_GLAGOL_PORT) -> Tuple[Optional[str], int]:
@@ -92,7 +120,8 @@ def _open_glagol_ws(host: str, port: int, logger: logging.Logger) -> Tuple[Optio
         return None, e
 
     last_err: Optional[Exception] = None
-    for proto in ("wss", "ws"):
+    # LAN-колонки обычно отвечают на ws://; wss пробуем вторым.
+    for proto in ("ws", "wss"):
         url = f"{proto}://{host}:{port}"
         sslopt = {"cert_reqs": ssl.CERT_NONE} if proto == "wss" else None
         try:
@@ -179,29 +208,60 @@ def glagol_request(
             pass
 
 
+def _glagol_response_ok(data: Dict[str, Any]) -> bool:
+    """Успех по кадру ответа Glagol (разные прошивки: ``ok``, ``SUCCESS``, …)."""
+    st = data.get("status")
+    if isinstance(st, str):
+        sl = st.strip().lower()
+        if sl in ("ok", "success"):
+            return True
+        if sl in ("error", "failed"):
+            return False
+    err_code = data.get("errorCode")
+    if err_code not in (None, "", 0):
+        return False
+    if data.get("error") and st not in (None, ""):
+        return False
+    if st is None and not data.get("error"):
+        return True
+    return False
+
+
 def glagol_send_text(
     host: str,
     port: int,
     conversation_token: str,
     text: str,
     logger: logging.Logger,
-) -> bool:
-    """Сокращение для ``{"command": "sendText", "text": ...}``; True если ``status == ok``."""
-    data, _err = glagol_request(
-        host,
-        port,
-        conversation_token,
-        {"command": "sendText", "text": text},
-        logger,
-    )
+    *,
+    send_fn: Optional[Any] = None,
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+    """
+    ``{"command": "sendText", "text": ...}``.
+
+    Returns:
+        ``(ok, response_json, detail)``. При таймауте ack колонка часто всё равно
+        выполняет команду — тогда ``ok=True`` и ``detail`` про отсутствие ответа.
+    """
+    payload = {"command": "sendText", "text": text}
+    if send_fn is not None:
+        data, err = send_fn(payload)
+    else:
+        data, err = glagol_request(host, port, conversation_token, payload, logger)
     if not data:
-        return False
-    ok = data.get("status") == "ok"
+        if err == "timeout waiting for response":
+            logger.info(
+                "Glagol: sendText отправлен (%s), ответ с requestId не пришёл — считаем успехом",
+                host,
+            )
+            return True, None, err
+        return False, None, err
+    ok = _glagol_response_ok(data)
     if ok:
         logger.info("Glagol: sendText ok (%s)", host)
     else:
         logger.warning("Glagol: sendText status=%s payload=%s", data.get("status"), data)
-    return ok
+    return ok, data, None
 
 
 def cover_uri_to_url(cover_uri: str, size: str = "400x400") -> Optional[str]:
@@ -238,14 +298,66 @@ def normalize_player_state(player_state: Dict[str, Any]) -> Dict[str, Any]:
         "duration_sec": player_state.get("duration") or None,
         "progress_sec": player_state.get("progress"),
         "playlist_type": player_state.get("playlistType"),
+        "playlist_id": player_state.get("playlistId"),
         "player_type": player_state.get("playerType"),
         "live_stream_text": player_state.get("liveStreamText"),
+        "has_play": bool(player_state.get("hasPlay")),
+        "has_pause": bool(player_state.get("hasPause")),
         "has_next": bool(player_state.get("hasNext")),
         "has_prev": bool(player_state.get("hasPrev")),
+        "has_progress_bar": bool(player_state.get("hasProgressBar")),
+        "show_player": bool(player_state.get("showPlayer")),
         "cover_url": cover,
         "repeat_mode": entity.get("repeatMode"),
         "shuffled": entity.get("shuffled"),
+        "entity_description": entity.get("description"),
     }
+
+
+def snapshot_from_glagol_state_dict(st: Dict[str, Any]) -> Dict[str, Any]:
+    """Преобразует поле ``state`` из кадра Glagol в тот же формат полей, что и у ``glagol_snapshot`` (без software_version)."""
+    if not isinstance(st, dict):
+        return {
+            "playing": None,
+            "volume": None,
+            "muted": None,
+            "alice_state": None,
+            "can_stop": None,
+            "hdmi_capable": None,
+            "hdmi_present": None,
+            "voice_idle_ms": None,
+            "player": None,
+            "raw_state": None,
+        }
+    voice_idle = st.get("timeSinceLastVoiceActivity")
+    st = dict(st)
+    st.pop("timeSinceLastVoiceActivity", None)
+    out: Dict[str, Any] = {
+        "playing": st.get("playing"),
+        "volume": None,
+        "muted": None,
+        "alice_state": st.get("aliceState"),
+        "can_stop": st.get("canStop") if "canStop" in st else None,
+        "hdmi_capable": None,
+        "hdmi_present": None,
+        "voice_idle_ms": voice_idle if isinstance(voice_idle, (int, float)) else None,
+        "player": None,
+        "raw_state": st,
+    }
+    hdmi = st.get("hdmi")
+    if isinstance(hdmi, dict):
+        if "capable" in hdmi:
+            out["hdmi_capable"] = bool(hdmi.get("capable"))
+        if "present" in hdmi:
+            out["hdmi_present"] = bool(hdmi.get("present"))
+    vol = st.get("volume")
+    if isinstance(vol, (int, float)):
+        out["volume"] = float(vol)
+        out["muted"] = vol <= 0
+    ps = st.get("playerState")
+    if isinstance(ps, dict):
+        out["player"] = normalize_player_state(ps)
+    return out
 
 
 def glagol_snapshot(
@@ -302,20 +414,13 @@ def glagol_snapshot(
                 out["software_version"] = data["softwareVersion"]
             st = data.get("state")
             if isinstance(st, dict):
-                out["raw_state"] = st
-                st = dict(st)
-                st.pop("timeSinceLastVoiceActivity", None)
-                out["playing"] = st.get("playing")
-                vol = st.get("volume")
-                if isinstance(vol, (int, float)):
-                    out["volume"] = float(vol)
-                    out["muted"] = vol <= 0
-                out["alice_state"] = st.get("aliceState")
-                ps = st.get("playerState")
-                if isinstance(ps, dict):
-                    out["player"] = normalize_player_state(ps)
-                else:
-                    out["player"] = None
+                snap = snapshot_from_glagol_state_dict(st)
+                out["playing"] = snap["playing"]
+                out["volume"] = snap["volume"]
+                out["muted"] = snap["muted"]
+                out["alice_state"] = snap["alice_state"]
+                out["player"] = snap["player"]
+                out["raw_state"] = snap["raw_state"]
         return out, None
     except Exception as ex:
         logger.warning("Glagol: snapshot %s:%s — %s", host, port, ex)
@@ -340,6 +445,7 @@ def glagol_player_command(
     shuffle: Optional[bool] = None,
     music_id: Optional[str] = None,
     music_type: Optional[str] = None,
+    send_fn: Optional[Any] = None,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     Управление плеером по Glagol. ``pause`` на колонке соответствует команде ``stop``.
@@ -387,4 +493,6 @@ def glagol_player_command(
     else:
         logger.warning("Glagol: неизвестное действие %r", action)
         return None, "unknown action"
+    if send_fn is not None:
+        return send_fn(payload)
     return glagol_request(host, port, conversation_token, payload, logger)

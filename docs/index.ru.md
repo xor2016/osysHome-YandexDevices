@@ -1,9 +1,12 @@
 # YandexDevices
 
-Документация по модулю `YandexDevices` разделена на два основных файла:
+Плагин для устройств Yandex Quasar IoT и **локального управления колонками Glagol** (LAN WebSocket, порт 1961).
 
-- [Руководство пользователя](USER_GUIDE.ru.md)
-- [Техническая документация](TECHNICAL_REFERENCE.ru.md)
+Документация:
+
+- [Руководство пользователя](USER_GUIDE.ru.md) — админка, авторизация, привязки, LAN
+- [Техническая документация](TECHNICAL_REFERENCE.ru.md) — модель данных, маршруты, опрос, Glagol
+- [Команды](Commands.md) — `glagol_command` из методов объектов через `callPluginFunction`
 
 ## Что открывать
 
@@ -13,7 +16,9 @@
 
 ## Быстрые ссылки
 
-- [Перейти к чек-листу запуска](USER_GUIDE.ru.md#чек-лист-быстрого-запуска)
-- [Перейти к разделу про привязки](USER_GUIDE.ru.md#как-работают-привязки-capability)
-- [Перейти к маршрутам и админ-операциям](TECHNICAL_REFERENCE.ru.md#админ-операции-и-http-маршруты)
-- [Перейти к потоку опроса и синхронизации](TECHNICAL_REFERENCE.ru.md#поток-опроса-и-синхронизации)
+- [Чек-лист запуска](USER_GUIDE.ru.md#чек-лист-быстрого-запуска)
+- [LAN Glagol](USER_GUIDE.ru.md#lan-glagol-локальное-управление)
+- [Команды Glagol из объектов](Commands.md)
+- [Привязки capability](USER_GUIDE.ru.md#как-работают-привязки-capability)
+- [Маршруты и HTTP](TECHNICAL_REFERENCE.ru.md#админ-операции-и-http-маршруты)
+- [Фоновый Glagol и WebSocket](TECHNICAL_REFERENCE.ru.md#lan-glagol-keepalive)

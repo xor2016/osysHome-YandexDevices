@@ -18,6 +18,8 @@ The `YandexDevices` module provides integration with Yandex IoT platform (Quasar
 - ✅ **Method Linking**: Link device commands to object methods
 - ✅ **Search Integration**: Search devices and stations
 - ✅ **Widget Support**: Dashboard widget
+- ✅ **LAN Glagol**: Background WebSocket to stations, snapshot to linked osysHome objects, live admin UI (Socket.IO)
+- ✅ **Glagol commands**: `glagol_command` from object methods via `callPluginFunction`
 
 ## Admin Panel
 
@@ -51,16 +53,25 @@ The module uses QR code authentication:
 4. Generate device token for station
 5. Link capabilities to object properties
 
+For LAN control: set station IP, generate device token, optional `glagol_linked_object`. See [docs/Commands.md](docs/Commands.md) and [docs/USER_GUIDE.md](docs/USER_GUIDE.md#lan-glagol-local-control).
+
+## Documentation
+
+- [docs/index.md](docs/index.md) — documentation index
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — admin UI and setup
+- [docs/TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) — implementation details
+- [docs/Commands.md](docs/Commands.md) — `glagol_command` from objects
+
 ## Technical Details
 
-- **API**: Yandex Quasar API
+- **API**: Yandex Quasar API; LAN Glagol (WebSocket :1961)
 - **Authentication**: OAuth with QR code
 - **Device Types**: Yandex Stations, smart speakers, IoT devices
 - **Capabilities**: on/off, volume, brightness, etc.
 
 ## Version
 
-Current version: **0.2**
+Current version: **0.22** (see `version` in `plugins/YandexDevices/__init__.py`)
 
 ## Category
 
@@ -78,6 +89,7 @@ The module provides the following actions:
 - Flask
 - SQLAlchemy
 - Requests
+- websocket-client (Glagol LAN)
 - osysHome core system
 
 ## Author

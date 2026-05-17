@@ -14,6 +14,9 @@ Core files:
 | `plugins/YandexDevices/forms/SettingForms.py` | Global module settings form |
 | `plugins/YandexDevices/forms/StationForm.py` | Station edit form |
 | `plugins/YandexDevices/templates/*` | Admin pages and widget |
+| `plugins/YandexDevices/glagol_local.py` | Glagol wire format, `glagol_send_text`, `glagol_player_command`, snapshot |
+| `plugins/YandexDevices/glagol_keepalive.py` | `GlagolWsRegistry` / per-station workers, object publish, UI WebSocket push |
+| `plugins/YandexDevices/docs/Commands.md` | `glagol_command` API for object methods |
 
 ---
 
@@ -55,6 +58,7 @@ flowchart LR
 | `online` | integer | Online flag |
 | `tts_scenario` | string | Scenario ID used for cloud TTS |
 | `tts` | integer | TTS mode (`0/1/2`) |
+| `glagol_linked_object` | string | osysHome object name for Glagol snapshot publish |
 | `updated` | datetime | Last update |
 
 ### `YaDevices` (`yadevices`)
@@ -109,8 +113,12 @@ Defined in `route_index()`:
 
 - `GET /YandexDevices/device/<device_id>` - returns device + capabilities JSON.
 - `POST /YandexDevices/device` and `/YandexDevices/device/<device_id>` - updates links and per-device settings.
+- `GET|POST /admin/<plugin>/station/<station_id>/glagol` - Glagol snapshot and player commands (LAN).
+- `GET /admin/<plugin>/glagol_ws_status` - JSON status of background Glagol workers.
 
-Both require admin permissions.
+Both device routes require admin permissions. Glagol station routes are registered in `route_index()` with the admin blueprint prefix.
+
+Plugin method **`glagol_command(**kwargs)`** is invoked via `callPluginFunction("YandexDevices", "glagol_command", {...})` (return value is passed back to the caller). Station resolution: `station_id`, `object` (matches `glagol_linked_object`), or `station` / `station_title`. See [Commands.md](Commands.md).
 
 > [!WARNING]
 > Frontend calls `/YandexDevices/delete_prop/<id>`, but this route is not defined in current backend source.
@@ -281,15 +289,37 @@ Alternative action used by `send_command_to_stationCloud(..., command)`:
 
 - `text_action`
 
+Local mode (`tts=1`) calls `send_command_to_station()` → `glagol_send_text()` over LAN (requires `ip`, `platform`, `iot_id`, `device_token`).
+
+---
+
+## LAN Glagol keepalive
+
+On plugin start, `GlagolWsRegistry` syncs workers for stations that have **IP** and **device_token**.
+
+Each `GlagolStationWorker`:
+
+- maintains a long-lived WebSocket to the station (port **1961**);
+- parses incoming state and calls `publish_glagol_snap_to_object()` when `glagol_linked_object` is set (core fields only: `state`, `volume`, `muted`, `alice_state`, `media_*`);
+- pushes admin UI updates via `plugin.sendDataToWebsocket` with operations `glagol_snapshot` and `glagol_ws_status` (throttled status on RX/TX).
+
+Low-level protocol and one-shot commands: `glagol_local.py`. Registry lifecycle: `glagol_keepalive.py`.
+
+`glagol_send_text`: if the station does not ACK within the timeout, the call may still return `ok: true` with a `detail` string when the frame was sent (see [Commands.md](Commands.md)).
+
 ---
 
 ## WebSocket
 
-The module sends:
+The module sends via `sendDataToWebsocket` (Socket.IO):
 
-- `operation: "updateDevice"` with refreshed device record.
+| Operation | Purpose |
+| --- | --- |
+| `updateDevice` | Refreshed device row (`yandexdevices_devices.html`) |
+| `glagol_snapshot` | Player / media fields for station admin UI |
+| `glagol_ws_status` | Background worker phase, RX/TX counters |
 
-Frontend in `yandexdevices_devices.html` subscribes to `YandexDevices` and updates `Updated` column in real time.
+Frontend subscribes with `subscribeData` → module name `YandexDevices`. Station page (`yandexdevices_station.html`) uses Glagol events for live status; HTTP poll is fallback only without Socket.IO.
 
 ---
 
@@ -299,20 +329,21 @@ From local plugin files:
 
 - `requests`
 - `certifi`
+- `websocket-client` (Glagol LAN)
 - Flask / WTForms / SQLAlchemy runtime from core platform
 
 ---
 
 ## Known Caveats
 
-- `send_command_to_station()` is stubbed (`pass`), local command path is not implemented.
-- Station form labels `Local (not work)` explicitly indicates incomplete local TTS mode.
 - `delProp` frontend action points to missing backend route.
 - `update_period` is loaded in settings form but current POST save logic persists only `get_device_data` and `update_linked`.
+- Reverse control via `setDataDevice` still uses `instance: "on"` for all capability types (see linking section).
 
 ---
 
 ## See Also
 
+- [Glagol commands (Commands.md)](Commands.md)
 - [User Guide](USER_GUIDE.md)
 - [Module index](index.md)
